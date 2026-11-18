@@ -37,8 +37,68 @@ static void reserve_memory(void)
 
 static void storage(bool sd_card)
 {
-    emu_set_drive_info(sd_card ? "Tapes and disks on the SD card (to come)" : "No SD card");
+    emu_set_drive_info(sd_card ? "Tapes (.UEF) from the SD card: they don't play yet" : "No SD card: no tapes");
 }
+
+/* ---- The tape drive: UEF files in the SD card's electron/ folder, listed,
+ * uploaded and downloaded by the web page. Tapes don't play yet (TODO.md 1):
+ * the drive only holds the name, and says so
+ */
+
+static char s_tape[160];
+
+/* A UEF file, or one gzip-compressed (the usual kind, same extension) */
+static bool tape_insert(int drive, const char *path)
+{
+    uint8_t head[10];
+    FILE *f = fopen(path, "rb");
+    size_t n = f ? fread(head, 1, sizeof(head), f) : 0;
+    if (f) {
+        fclose(f);
+    }
+    bool uef = n == sizeof(head) && memcmp(head, "UEF File!", sizeof(head)) == 0;
+    bool gzip = n >= 2 && head[0] == 0x1f && head[1] == 0x8b;
+    if (!uef && !gzip) {
+        ESP_LOGW(TAG, "%s: not a UEF file", path);
+        return false;
+    }
+    snprintf(s_tape, sizeof(s_tape), "%s", path);
+    return true;
+}
+
+static void tape_eject(int drive)
+{
+    s_tape[0] = 0;
+}
+
+static const char *tape_path(int drive)
+{
+    return s_tape[0] ? s_tape : NULL;
+}
+
+static bool tape_write_protected(int drive)
+{
+    return false;
+}
+
+static const char *const extensions[] = { ".uef", NULL };
+static const char *const drive_names[] = { "Tape" };
+
+static const disks_config_t disks = {
+    .folder = "electron",
+    .extensions = extensions,
+    .description = "Tapes (.UEF)",
+    .title = "Tapes",
+    .button = "Tapes",
+    .nvs_namespace = "elkdisks",
+    .drives = 1,
+    .drive_names = drive_names,
+    .max_upload = 4 * 1024 * 1024,
+    .insert = tape_insert,
+    .eject = tape_eject,
+    .path = tape_path,
+    .write_protected = tape_write_protected,
+};
 
 /* ---- Starting ---- */
 
@@ -76,7 +136,13 @@ static void screen_mode(emu_screen_t *mode)
 
 static void status(emu_json_t *j, int section)
 {
-    if (section != EMU_STATUS_ROWS) {
+    if (section == EMU_STATUS_DRIVES) {
+        elk_status_t s;
+        elk_get_status(&s);
+        /* the light: the cassette motor's relay ($FE07 bit 6) */
+        emu_json_drive(j, drive_names[0], disks_name(0), false, s.motor, 0, 0,
+                       disks_name(0) ? "Tapes don't play yet (to come): LOAD and CHAIN won't find it" :
+                       "Tapes don't play yet (to come)");
         return;
     }
     static const struct {
@@ -113,7 +179,8 @@ static void status(emu_json_t *j, int section)
     snprintf(text, sizeof(text), "CAPS LK %s; by position, Tab and Alt FUNC, F1-F10 f1-f9 and f0, End COPY, "
              "Pause or F12 BREAK", s.caps_lock ? "on" : "off");
     emu_json_row(j, "Keyboard", text);
-    emu_json_row(j, "Cassette", s.motor ? "Motor on (tapes to come)" : "Motor off (tapes to come)");
+    emu_json_row(j, "Cassette", s.motor ? "Motor on; tapes don't play yet (to come)" :
+                 "Motor off; tapes don't play yet (to come)");
     emu_json_row(j, "Expansions", "None (the Plus 3's floppy disks to come)");
 }
 
@@ -199,6 +266,7 @@ static const emu_machine_t machine = {
     .audio_render = elk_audio_render,
     .audio_pending = elk_audio_pending,
     .hid_key = keymap_hid_key,
+    .disks = &disks,
     .status = status,
     .console_info = console_info,
     .console_command = console_command,

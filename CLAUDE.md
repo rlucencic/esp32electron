@@ -36,7 +36,11 @@ bash -c '. ~/.espressif/tools/activate_idf_v5.5.6.sh >/dev/null 2>&1; idf.py bui
   file of the same name in the SD card's `electron/roms` overrides one
   (`roms/README.md`: where they come from). The boards are shared with the
   other projects: after another one, a full `flash`.
-- NVS: namespace `elk` (`plus3`). mDNS `acorn-electron.local`.
+- NVS: namespace `elk` (`plus3`), the tape in the drive `elkdisks`. mDNS
+  `acorn-electron.local`.
+- The SD card's `electron/` folder: UEF tapes (`.uef`, gzip-compressed
+  ones too, the usual kind: TOSEC's are), listed by the web page and the
+  setup screen's Tapes page. Tapes don't play yet (`TODO.md` 1).
 - The MaTouch: its UART port, not native USB (the speaker's lines); opening
   that port resets the board.
 - `../esp32emu/tools/emu_console.py PORT log N | lcd F.png | send "cmd" |
@@ -47,16 +51,24 @@ Console commands (`main/main.c`): `k <n>` tap matrix key n (`electron.h`'s
 `ELK_KEY_*`: column * 4 + row; 6 RETURN, 3 SPACE, 52 ESCAPE), `K <n> 0|1`,
 `T <text>` (`\n` RETURN; a key every 6 frames; the console takes lines of
 about 128 characters: longer ones are cut, so type programs a line at a
-time), `B` BREAK. The web page's machine card (`status()`): the system, the
-ROM at $8000 now, the mode (size, colours, screen memory, start, whether
-the CPU waits), the tone's pitch, CAPS LK and the keys' places, the
-cassette motor, the expansions.
+time), `B` BREAK.
+
+The web page (esp32emu's, `http://acorn-electron.local`): the machine card
+(`status()`: the system, the ROM at $8000 now, the mode (size, colours,
+screen memory, start, whether the CPU waits), the tone's pitch, CAPS LK and
+the keys' places, the cassette motor, the expansions), the drives card (the
+Tape drive: its tape, the motor as its light, "Tapes don't play yet"), the
+board card, and the `.uef` files in `electron/` with upload (ZIP files
+unpacked in the browser), download, delete and Insert into Tape. The Tape
+drive (`main.c`'s `disks`, the setup screen's Tapes button too) takes a
+UEF or gzip file (else 422) and only holds its name, remembered across
+restarts: LOAD and CHAIN don't see it yet.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `main/main.c` | The Electron as an `emu_machine_t`: memory, start, status, console |
+| `main/main.c` | The Electron as an `emu_machine_t`: memory, start, the Tape drive (`disks`: the name only so far), status, console |
 | `main/keymap.c` | The board's keyboards (HID usages) to the Electron's keys, by position |
 | `main/rom_store.c` | The ROMs from their partition slots, or the SD card's `electron/roms` |
 | `main/settings.c` | NVS `elk` |
@@ -157,6 +169,16 @@ cassette motor, the expansions.
   in the ROM's `memcmp` (`?40056000` in the profile: the S3 ROM's ELF has
   no sizes; sampling raw PCs found it). Only new values at the mode's
   screen base or above count now.
+- **The web page showed only its title** (2026-11-18): without a `disks`
+  config `/api/info`'s disks were nulls, and the page's `accepted()` threw
+  on the null description before it asked for the status, so every card
+  stayed empty. The page copes with that now (esp32emu; any board without
+  an SD card had the same), and the Electron has its Tape drive and folder.
+  Checked on the MaTouch (2026-11-18): `/api/info`, `/api/status`,
+  `/api/disks`, the served page run under node against them (every card
+  filled), a TOSEC UEF uploaded, downloaded identical, inserted (a text
+  file named `.uef` refused with 422), kept across a reset, the light on
+  with `*MOTOR 1`, deleted only once ejected.
 - **Speed on the MaTouch** (2026-11-18, core 1 busy): the BASIC prompt 64%
   -> 57% (the comparison) -> 44% (slow pages), the mode 4 loop 81% -> 71%,
   the mode 1 loop (contended: RAM still through callbacks) 69% -> 61%
