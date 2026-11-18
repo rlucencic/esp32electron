@@ -79,7 +79,9 @@ Console commands (`main/main.c`): `k <n>` tap matrix key n (`electron.h`'s
   lines: 0-255, in mode 3 lines 0-7 of each 10-line row). The BASIC loop
   `TIME=0:FOR A=0 TO 10000:NEXT` takes 14.71 / 14.74 / 14.89 / 11.94 /
   7.07 / 7.08 / 7.07 s in modes 0-6 on the host, two real Electrons 14.71
-  / 14.74 / 14.89-14.90 / 11.92-11.94 / 7.07-7.08 (docs 4.5). $8000-$BFFF
+  / 14.74 / 14.89-14.90 / 11.92-11.94 / 7.07-7.08 (docs 4.5); mode 0 on
+  the boards 14.72 (Tab5) and 14.70 s (MaTouch), at 100% (core 1 23% and
+  64%). $8000-$BFFF
   by the ROM page: 8-9 the keyboard, 10-11 BASIC, 4 the Plus 3's ADFS,
   others $FF. $FC00-$FDFF the expansion bus (nothing yet: $FF), $FE00-$FEFF
   the ULA.
@@ -100,7 +102,9 @@ Console commands (`main/main.c`): `k <n>` tap matrix key n (`electron.h`'s
   640 x 256. The palette (docs 3.4): a pixel's 4-bit index (2 colours 0/8,
   4 colours 0/2/8/10, 16 all) to 8 colours, a bit a gun, 1 = off; each
   register pair holds four indices (10 8 2 0, 14 12 6 4, 15 13 7 5, 11 9 3
-  1). Checked: mode 2's 16 colours, 5's and 0's as the MOS sets them.
+  1). Checked: mode 2's 16 colours, 5's and 0's as the MOS sets them
+  (host; mode 2 on the Tab5 too: a screenshot over USB is slow enough to
+  catch the flashing colours 8-15 in both phases, in bands).
 - **The keyboard** (`keyboard.c`, `main/keymap.c`): 14 columns of 4 keys
   (MAME's electron.cpp has the layout); with ROM page 8 or 9 a read of
   $8000-$BFFF ORs the columns whose address line A0-A13 is low into bits
