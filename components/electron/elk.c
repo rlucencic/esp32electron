@@ -97,6 +97,7 @@ static uint8_t bus_read(void *ctx, uint16_t a)
         return elk.ram[a];
     }
     if (a < 0xC000) {
+        wait_io(c);                     /* the keyboard: 1 MHz (MAME) */
         return elk_keyboard_read(a);    /* (only the keyboard pages come here) */
     }
     if (a >= 0xFE00 && a < 0xFF00) {

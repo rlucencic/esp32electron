@@ -11,6 +11,7 @@
  *                           instructions before and the registers
  *   ELK_TRACE=<pc>:<n>      from pc on, the next n instructions
  *   ELK_KEYS=<frame>:<key>:<0|1>[;...]  matrix keys (column * 4 + row)
+ *   ELK_BREAK=<frame>       BREAK pressed for two frames
  *   ELK_TYPE=<frame>:<text>[|...]  type text from that frame (\n is RETURN)
  *   ELK_WAV=<file>          the sound
  *   ELK_DUMP=<addr>:<len>[;...]  memory in hex at the end
@@ -37,8 +38,9 @@ static void disassemble(uint16_t pc)
 static void registers(void)
 {
     const m6502_t *c = &elk.cpu;
-    printf("  A %02X X %02X Y %02X S %02X P %02X PC %04X  ROM page %u  cycles %llu\n", c->a, c->x, c->y, c->s, c->p,
-           c->pc, elk.rom_page, (unsigned long long)c->cycles);
+    printf("  A %02X X %02X Y %02X S %02X P %02X PC %04X  ROM page %u  mode %u  CAPS LK %s  cycles %llu\n", c->a, c->x,
+           c->y, c->s, c->p, c->pc, elk.rom_page, elk.mode, (elk.control & 0x80) ? "on" : "off",
+           (unsigned long long)c->cycles);
     if (getenv("ELK_ZP")) {
         unsigned from = strtoul(getenv("ELK_ZP"), NULL, 16);
         printf("  %02X:", from);
@@ -242,6 +244,12 @@ int main(int argc, char **argv)
     }
     for (s_frame = 0; s_frame < frames; s_frame++) {
         keys_for_frame(s_frame);
+        if (getenv("ELK_BREAK")) {
+            uint32_t at = strtoul(getenv("ELK_BREAK"), NULL, 10);
+            if (s_frame == at || s_frame == at + 2) {
+                elk_break(s_frame == at);
+            }
+        }
         type_for_frame(s_frame);
         elk_run_frame();
         if (wav) {

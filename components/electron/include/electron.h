@@ -39,8 +39,31 @@ bool elk_halted(void);
 uint32_t elk_screen_signature(void);
 void elk_render_line_rgb565(int y, uint16_t *dst);
 
-/* ---- Keyboard: keys by matrix position (column * 4 + row) ---- */
-#define ELK_KEYS                (14 * 4)
+/* ---- Keyboard: keys by matrix position (column * 4 + row) ----
+ *
+ * 14 columns of 4: a read of $8000-$BFFF with ROM page 8 or 9 returns in
+ * bits 0-3 the keys down in the columns whose address line A0-A13 is low
+ * (the layout as MAME's electron.cpp has it, BSD-3-Clause). The second
+ * symbol on a key comes with SHIFT, the third with CTRL: RIGHT | \,
+ * LEFT ^ ~, UP £ {, DOWN _ }, COPY [ ].
+ */
+enum {
+    ELK_KEY_RIGHT, ELK_KEY_COPY, ELK_KEY_NONE_2, ELK_KEY_SPACE,
+    ELK_KEY_LEFT, ELK_KEY_DOWN, ELK_KEY_RETURN, ELK_KEY_DELETE,
+    ELK_KEY_MINUS, ELK_KEY_UP, ELK_KEY_COLON, ELK_KEY_NONE_11,
+    ELK_KEY_0, ELK_KEY_P, ELK_KEY_SEMICOLON, ELK_KEY_SLASH,
+    ELK_KEY_9, ELK_KEY_O, ELK_KEY_L, ELK_KEY_PERIOD,
+    ELK_KEY_8, ELK_KEY_I, ELK_KEY_K, ELK_KEY_COMMA,
+    ELK_KEY_7, ELK_KEY_U, ELK_KEY_J, ELK_KEY_M,
+    ELK_KEY_6, ELK_KEY_Y, ELK_KEY_H, ELK_KEY_N,
+    ELK_KEY_5, ELK_KEY_T, ELK_KEY_G, ELK_KEY_B,
+    ELK_KEY_4, ELK_KEY_R, ELK_KEY_F, ELK_KEY_V,
+    ELK_KEY_3, ELK_KEY_E, ELK_KEY_D, ELK_KEY_C,
+    ELK_KEY_2, ELK_KEY_W, ELK_KEY_S, ELK_KEY_X,
+    ELK_KEY_1, ELK_KEY_Q, ELK_KEY_A, ELK_KEY_Z,
+    ELK_KEY_ESCAPE, ELK_KEY_FUNC, ELK_KEY_CTRL, ELK_KEY_SHIFT,
+    ELK_KEYS
+};
 void elk_key(int key, bool down);       /* from any task */
 void elk_break(bool down);              /* the BREAK key: the 6502's reset */
 bool elk_type(const char *text);        /* \n is RETURN; false while still typing */
