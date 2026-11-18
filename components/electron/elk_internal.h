@@ -25,15 +25,17 @@
 
 /* ---- Time: 2 MHz ticks (the 6502 core's cycles) ----
  *
- * A line is 64 us, 128 ticks; a frame 312 lines (50.08 Hz). Line 0 is the
- * picture's first line; the picture is 256 lines (250 in modes 3 and 6),
- * the rest of the frame border and blanking.
+ * A line is 64 us, 128 ticks; the picture is interlaced: fields of 312 and
+ * 313 lines alternate (50 Hz). Line 0 is the picture's first line, tick 0
+ * of a line its first pixel; the picture is 256 lines (250 in modes 3 and
+ * 6), the rest of the field border and blanking (docs/electron-hardware.md
+ * 3.1).
  */
 #define ELK_LINE_TICKS      128
-#define ELK_LINES           312
-#define ELK_FRAME_TICKS     (ELK_LINE_TICKS * ELK_LINES)
 #define ELK_CPU_HZ          2000000
-#define ELK_DISPLAY_TICKS   80          /* a line's fetch: 40 us */
+#define ELK_DISPLAY_TICKS   80          /* a line's pixels and fetch: 40 us */
+#define ELK_DISPLAY_END_TICK 96         /* display end: HS after the last line */
+#define ELK_RTC_LINE        99          /* the 50 Hz interrupt: c 62 or -2 by the field */
 
 /* The ULA's interrupt bits ($FE00) */
 enum {
@@ -53,6 +55,7 @@ typedef struct {
     const uint8_t *basic, *mos, *adfs;
 
     uint64_t frame_start;               /* the tick line 0 began at */
+    uint32_t field_ticks;               /* this field's length: 312 or 313 lines */
     int line;                           /* the line being run */
     uint32_t frames;
 
@@ -82,7 +85,7 @@ void elk_ula_reset(bool power_on);
 uint8_t elk_ula_read(uint16_t addr);
 void elk_ula_write(uint16_t addr, uint8_t v);
 void elk_ula_update_irq(void);
-void elk_ula_line(void);                /* at each line's start */
+void elk_ula_raise(uint8_t bits);       /* interrupt conditions */
 bool elk_contended_mode(void);          /* modes 0-3: no CPU RAM access during the fetch */
 int elk_display_lines(void);            /* 256, or 250 in modes 3 and 6 */
 void elk_map_rom(void);                 /* $8000-$BFFF for the current ROM page */

@@ -1,6 +1,7 @@
 /*
  * Sound: with $FE07's bits 1-2 at 01 the ULA makes a square wave of
- * 1 MHz / 16 / (counter + 1) (the counter is $FE06). 16-bit stereo at
+ * 1 MHz / 32 / (counter + 1) (the counter is $FE06; the MOS's SOUND 1,-15,0
+ * is B2, 123.5 Hz: docs/electron-hardware.md 5). 16-bit stereo at
  * ELK_AUDIO_HZ, two samples each line (15625 lines a second), each the
  * wave's average over its half line, into a ring the board's speaker task
  * drains (which paces the emulation: the runtime waits while two frames are
@@ -19,7 +20,7 @@ static uint32_t s_phase;                /* ticks into the wave's period */
 /* Ticks of a sample window the wave is high, the phase moved on */
 static int high_ticks(int window)
 {
-    uint32_t half = 16u * (elk.counter + 1);    /* half a period, 2 MHz ticks */
+    uint32_t half = 32u * (elk.counter + 1);    /* half a period, 2 MHz ticks */
     uint32_t period = 2 * half;
     int high = 0;
     while (window > 0) {

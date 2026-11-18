@@ -61,20 +61,28 @@ static void map_memory(void)
 
 /* ---- Bus timing ---- */
 
-/* A RAM access starting at tick t: past the fetch (modes 0-3), then on the
- * 1 MHz clock; the access is the two ticks from the returned one
+/* A RAM access starting at tick t: the next 1 MHz slot (an even tick: 2
+ * ticks from an even start, 3 from an odd one); in modes 0-3 a slot in a
+ * pixel line's first 80 ticks is the ULA's, and the access waits for the
+ * one at tick 80 (docs/electron-hardware.md 4.4: up to 41.5 us). Pixel
+ * lines: 0-255, in mode 3 lines 0-7 of each 10-line row. Returns the
+ * access's first tick.
  */
 static inline uint64_t ram_slot(uint64_t t)
 {
+    t = (t + 1) & ~(uint64_t)1;
     if (elk_contended_mode()) {
-        uint64_t pos = (t - elk.frame_start) % ELK_FRAME_TICKS;
+        uint64_t pos = t - elk.frame_start;
+        if (pos >= elk.field_ticks) {
+            pos -= elk.field_ticks;     /* (run past the field's end: the next one's) */
+        }
         uint32_t line = pos / ELK_LINE_TICKS, p = pos % ELK_LINE_TICKS;
-        bool fetching = (int)line < elk_display_lines() && (elk.mode != 3 || line % 10 < 8);
-        if (fetching && p < ELK_DISPLAY_TICKS) {
+        bool pixels = (int)line < elk_display_lines() && (elk.mode != 3 || line % 10 < 8);
+        if (pixels && p < ELK_DISPLAY_TICKS) {
             t += ELK_DISPLAY_TICKS - p;
         }
     }
-    return (t + 1) & ~(uint64_t)1;
+    return t;
 }
 
 /* The core adds the access's last tick after the callback */
@@ -163,6 +171,7 @@ void elk_reset(void)
 {
     memset(elk.ram, 0, ELK_RAM_SIZE);
     elk.frame_start = elk.cpu.cycles;
+    elk.field_ticks = 312 * ELK_LINE_TICKS;
     elk_ula_reset(true);
     map_memory();
     m6502_reset(&elk.cpu);
@@ -179,33 +188,60 @@ void elk_break(bool down)
     elk.break_down = down;
 }
 
-/* ---- The frame ---- */
+/* ---- The field ---- */
 
-void elk_run_frame(void)
+/* The CPU up to tick t (held while BREAK is down; started again from its
+ * reset vector as it comes up)
+ */
+static void run_to(uint64_t t)
 {
     static bool was_down;
-    elk_video_frame_start();
-    for (elk.line = 0; elk.line < ELK_LINES; elk.line++) {
-        elk_ula_line();
-        elk_video_line(elk.line);
-        uint64_t end = elk_line_start() + ELK_LINE_TICKS;
-        if (elk.break_down) {
-            if (elk.cpu.cycles < end) {
-                elk.cpu.cycles = end;
-            }
-        } else {
-            if (was_down) {
-                elk_ula_reset(false);
-                map_memory();
-                m6502_reset(&elk.cpu);
-            }
-            elk.cpu.until = end;
+    if (elk.break_down) {
+        if (elk.cpu.cycles < t) {
+            elk.cpu.cycles = t;
+        }
+    } else {
+        if (was_down) {
+            elk_ula_reset(false);
+            map_memory();
+            m6502_reset(&elk.cpu);
+        }
+        if (elk.cpu.cycles < t) {
+            elk.cpu.until = t;
             m6502_run(&elk.cpu);
         }
-        was_down = elk.break_down;
+    }
+    was_down = elk.break_down;
+}
+
+/* One field: 312 lines, then 313 (the 50 Hz interrupt 1 us before line 99's
+ * first pixel in the first, 31 us after it in the second); display end at
+ * the HS after the last picture line
+ */
+void elk_run_frame(void)
+{
+    bool long_field = elk.frames & 1;
+    int lines = long_field ? 313 : 312;
+    elk.field_ticks = lines * ELK_LINE_TICKS;
+    elk_video_frame_start();
+    for (elk.line = 0; elk.line < lines; elk.line++) {
+        elk_video_line(elk.line);
+        uint64_t start = elk_line_start();
+        if (elk.line == ELK_RTC_LINE - 1 && !long_field) {
+            run_to(start + ELK_LINE_TICKS - 2);
+            elk_ula_raise(INT_RTC);
+        } else if (elk.line == ELK_RTC_LINE && long_field) {
+            run_to(start + 62);
+            elk_ula_raise(INT_RTC);
+        }
+        if (elk.line == elk_display_lines() - 1) {
+            run_to(start + ELK_DISPLAY_END_TICK);
+            elk_ula_raise(INT_DISPLAY_END);
+        }
+        run_to(start + ELK_LINE_TICKS);
         elk_sound_line();
     }
-    elk.frame_start += ELK_FRAME_TICKS;
+    elk.frame_start += elk.field_ticks;
     elk.frames++;
     elk_video_frame_end();
     elk_keyboard_frame();

@@ -22,7 +22,7 @@ FPGA; MAME's ULA timing comment quotes TECH; the 3rd-5th editions of the
 Electron AUG (AUG5) carry stardot members' corrections, some from the same
 measurements that tuned FPGA. "Confirmed" below always includes at least
 one source outside such a lineage (SM, the MOS/ADFS code, MAME's code,
-the 1984 text) or two separate measurements.
+the schematics) or two separate measurements.
 
 ### Summary
 
@@ -48,16 +48,21 @@ $FCC0 (bits 0/1 drive, 2 side, 3 single density, 5 not-reset), no
 INTRQ/DRQ wiring, ADFS polls with IRQs off, ADFS in page 4; power-on
 detected by FE00 bit 1, CTRL-BREAK by the MOS reading CTRL.
 
-Uncertain (details in the text): what unmapped reads return; whether
-keyboard reads run at 1 or 2 MHz; the exact edges of the contention
-window (to one 2 MHz cycle) and the 1 MHz slot phase; the "+1" in the
-sound divisor; the keyboard read's high nibble; whether FE07 mode
-changes act at once or at the line's end; what reading $FCC0 returns;
-Plus 3 latch bit 4 (to NMI through link LK1) and its address mirrors;
-Electron ADFS 1.00's side order on 640K discs vs BBC ADFS L; whether
-BREAK resets the ULA's registers; RxFull's clearing and the high-tone
-rule; UEF &0110/&0112 units (CLK differs from the spec); the cause of the
-Plus 1's slowdown.
+Uncertain (details in the text): what unmapped reads return (FC/FD
+pages, empty ROM pages, write-only SHEILA registers); whether keyboard
+reads run at 1 or 2 MHz; the contention window's exact edges and the
+1 MHz slot phase (to one 2 MHz cycle); the keyboard read's high nibble;
+whether FE07 mode changes act at once or at the line's end; when RxFull
+clears and the exact high-tone rule; whether BREAK resets the ULA's
+registers; a write of $FE06 restarting the tone or not; what reading
+$FCC0 returns and whether $FCC8-$FCCF mirror the Plus 3; the side order
+inside 2-sided ADFS image files; why a Plus 1 slows the BASIC loop. Single
+sources: the RTC's position within line 99 (AUG5's scope pictures), the
+NMI latch cleared by $FE05 bit 7, Plus 3 latch bit 4 driving NMI through
+link LK1, the Plus 1 register bits. Places where one emulator differs
+from the others are flagged "[CLK differs]" (paging on interrupt-clear
+writes, FC/FD speed, RAM speed outside the window, UEF &0110/&0112
+units).
 
 Contents
 
@@ -223,7 +228,7 @@ clear through BREAK, which is how the MOS tells power-on from BREAK
 
 Write (enable): bits 6-2 enable the matching sources; bits 7, 1, 0 have
 no effect [AUG5 p212; TECH "Writing values to the two lowest bits
-appears to have no effect"; FPGA `ier(6 downto 2)`; MAME masks `~0x83`]
+appears to have no effect"; FPGA (enable register holds bits 6-2 only); MAME masks `~0x83`]
 [confirmed]. (CLK stores bit 1 too, so a write with bit 1 set while the
 power-on flag is up would raise IRQ there [CLK `evaluate_interrupts`].)
 The IRQ output is a level: asserted while any enabled status bit is set
@@ -330,7 +335,7 @@ resets them on its RST input.]
 | Front porch, HS, back porch | about 8 us, 4 us, 12 us (c = 80-95, 96-103, 104-127) | AUG5 p213 (scope); FPGA/CLK `hsync_start` 768, `hsync_end` 832 [confirmed] |
 | Fields | interlaced: 312.5 lines a field, 625 a frame, 50 Hz fields (20.000 ms) | SM 3.1 "625-line 50Hz, interlaced"; AUG5 p214 (RTC differs between odd and even fields); CLK alternates 312- and 313-line fields [confirmed] |
 | Displayed lines | 256 (modes 0-2, 4, 5); 250 (modes 3, 6: 25 rows of 10) | SM 3.1; AUG5; FPGA; CLK [confirmed] |
-| VSYNC | 160 us (2.5 lines), lines 281.0-283.5 in one field, 281.5-284.0 in the other | FPGA comment "The real ULA uses line 281->283/4 for VSYNC"; AUG5 p214 160 us; positions [derived] from RTC = VS end + 8192 us = line 99 |
+| VSYNC | 160 us (2.5 lines), lines 281.0-283.5 in one field, 281.5-284.0 in the other | FPGA (a comment gives the real ULA's VSYNC as lines 281 to 283/284; FPGA itself moves it 7 lines up); AUG5 p214 160 us; positions [derived] from RTC = VS end + 8192 us = line 99 |
 
 For an emulator: alternate fields of 312 lines (39936 cycles; RTC at c =
 -2 of line 99) and 313 lines (40064 cycles; RTC at c = 62 of line 99);
@@ -346,7 +351,7 @@ Where the picture sits [derived from the table]: 29 lines (or 28.5)
 between the end of VSYNC and line 0, 25 lines from line 256 to VSYNC;
 horizontally 16 us from the start of HS to the first pixel. Outside the
 active area, and on the blank lines, the output is black (no border
-colour) [FPGA "blanking and border are always black"; MAME fills black;
+colour) [FPGA (border and blanking output black); MAME fills black;
 CLK outputs blank] [confirmed].
 
 ### 3.2 Modes
@@ -378,15 +383,15 @@ $D965-$D970, $DADA].
   address goes up by 8 per byte column; within a cell, by 1 per pixel
   line. A pixel line's byte k is at `row_start + 8 k + line` (line 0-7);
   the next row starts at `row_start + 640` (80-byte modes) or `+ 320`
-  [FPGA `screen_addr <= byte_addr & char_row(2 downto 0)`; CLK
+  [FPGA (address = byte counter with the row's line number in bits 2-0); CLK
   `ram_[byte_addr_ | char_row_]`, `byte_addr_ += 8`; MAME `screen_update`
   (+0x278 / +0x138 after 8 lines)] [confirmed].
 - **Modes 3 and 6**: the line counter runs 0-9; lines 8 and 9 of each
-  row are blank (black) and fetch nothing [FPGA `char_row >= 8` blank;
+  row are blank (black) and fetch nothing [FPGA (lines 8, 9 blanked);
   CLK `in_blank()`; MAME `m_screen_ra >= 8`; SD-CONT p120415 "in mode 3
-  there are only 200" active lines] [confirmed]. FPGA notes that the
-  counter's bit 3 (VA3) is forced to 0 in graphics modes ("From the ULA
-  schematics sheet 7 ... needed for 0xC0DE's Vertical Rupture demo")
+  there are only 200" active lines] [confirmed]. FPGA's notes say that,
+  per the ULA schematics, the counter's bit 3 (VA3) is forced to 0 in
+  graphics modes, and that 0xC0DE's demo Vertical Rupture depends on it
   [one source]: switching from a text to a graphics mode mid-row restarts
   the 0-7 count.
 - **Screen start**: 15-bit address A14-A6 (64-byte steps); A5-A0 = 0.
@@ -400,8 +405,9 @@ $D965-$D970, $DADA].
 - **Wrap**: when the address counter steps past $7FFF (15-bit overflow:
   A14-A11 all 0) it continues at the mode's base, i.e. it subtracts the
   screen size: $8000 becomes $3000 in modes 0-2, $4000 in mode 3, $5800
-  in modes 4, 5, $6000 in mode 6 [FPGA "Handle wrap-around back to
-  mode_base"; CLK; MAME `read_vram` subtracts `mode_size`] [confirmed].
+  in modes 4, 5, $6000 in mode 6 [FPGA (replaces the address with the
+  mode base plus its low bits); CLK; MAME `read_vram` subtracts
+  `mode_size`] [confirmed].
   The same test catches a start address below $0800 (the "start 0000
   becomes the mode base" quirk); a start between $0800 and the base is
   displayed from there [TECH] [one source, consistent with FPGA's logic].
@@ -477,7 +483,7 @@ software"; derived, MOS $DB98-$DBB8 (flash counter $0251, calls $C8A3)]
 | RAM in modes 0-3 during the 40 us active part of a pixel line | clock held until that part ends, then the 1 MHz access | SM 5.1; AUG5 p231-232; SD-CONT p120438; FPGA [confirmed] |
 | SHEILA $FE00-$FEFF | 1 MHz, never stalled | AUG5 p229, p231 ("peripherals ... free to do in the normal way"); FPGA `io_access`; CLK `run_until_io_slot` [confirmed] |
 | FRED/JIM $FC00-$FDFF | 1 MHz, never stalled | AUG5 p229 ("750 ns or 1250 ns when accessing the 1 MHz bus"), p237; FPGA [confirmed; CLK runs them at 2 MHz] |
-| Keyboard (pages 8/9) | [UNCERTAIN] 1 MHz per FPGA ("Keyboard accesses always need to happen at 1MHz") and MAME (`set_clock_scale(0.5)`); 2 MHz per CLK and TECH ("when accessing the ROM or keyboard areas ... 2Mhz") | |
+| Keyboard (pages 8/9) | [UNCERTAIN] 1 MHz per FPGA (keyboard reads count as I/O there) and MAME (`set_clock_scale(0.5)`); 2 MHz per CLK and TECH ("when accessing the ROM or keyboard areas ... 2Mhz") | |
 
 Every 6502 bus cycle counts, dummy reads and writes included: a 2-cycle
 SEI fetched from RAM costs two RAM accesses [derived; consistent with the
@@ -572,16 +578,17 @@ slows the loop by about 16% in modes 0-3 is not explained [UNCERTAIN].
 - Frequency = 1 MHz / (32 x (S + 1)), S = $FE06 (0-255): 122 Hz to
   31.25 kHz [AUG5 p221; MAME `set_sound_frequency((clock() / 16) / (32 *
   (data + 1)))`] [confirmed]. The MOS and the User Guide agree [derived,
-  MOS $EA1F-$EA7C: for SOUND pitch P, octave = (P >> 2) div 12, semitone
-  = (P >> 2) mod 12, q = P AND 3, S = ((T[semitone] - (q+1) d) >> octave)
-  - 1 with T = 256, 240, 227, 214, 203, 191, 181, 170, 160, 151, 143, 135
-  (table at $EA7E, 0 meaning 256), d = 3 below semitone 7 else 2. EUG p118
-  calls P = 0 "the B one octave and a semitone below middle C" and P = 52
-  middle C: the formula gives S = 252, 123.5 Hz (B2 = 123.47 Hz) and
-  S = 117, 264.8 Hz (C4 = 261.6 Hz); a 16 x divisor would be an octave
-  high]. FPGA's source comment says 1 MHz / [16 (S + 1)] while its counter
-  divides by about 32 S (124.0 Hz for P = 0); CLK uses 32 (S + 0.25)
-  (123.9 Hz). The B2 match favours S + 1 [derived].
+  MOS $EA1F-$EA7C, table at $EA7E]: for SOUND pitch P, with n = P >> 2,
+  octave = n div 12, semitone = n mod 12 and q = P AND 3, the MOS writes
+  S = ((T[semitone] - (q + 1) d) >> octave) minus 1, where T = 256, 240,
+  227, 214, 203, 191, 181, 170, 160, 151, 143, 135 and d = 3 below
+  semitone 7, else 2. EUG pp117-118 calls P = 0 "the B one octave and a
+  semitone below middle C" and P = 52 middle C; the formula gives S = 252,
+  123.5 Hz (B2 = 123.47 Hz) and S = 117, 264.8 Hz (C4 = 261.6 Hz). A 16 x
+  divisor would be an octave high. FPGA's source comments give a 16 x
+  (S + 1) formula while its counter divides by about 32 S (124.0 Hz for
+  P = 0); CLK uses 32 (S + 0.25) (123.9 Hz). The B2 match favours S + 1
+  [derived].
 - On only in comms mode 01 ($FE07 bits 2-1) [AUG5 p223; FPGA; MAME; CLK]
   [confirmed]. Cassette in or out (00, 10) silences it, so the machine
   cannot play sound while loading [AUG5 p223]. The motor bit (6) is
@@ -613,22 +620,23 @@ slows the loop by about 16% in modes 0-3 is not explained [UNCERTAIN].
   figures 14.3a/b] [confirmed]. The ULA's own output frequencies come
   from 16 MHz / 13 (pin "÷13 IN", 812 ns period, from a 74LS169):
   1201.9 Hz and 2403.8 Hz (/1024 and /512) [SM 6, 8.8; AUG5 p228
-  "approximately 1200 Hz if divided by 1024"; FPGA comment "2404Hz",
-  "1202Hz"] [confirmed]. Output is a synthesised sine, 1.8 V p-p at the
+  "approximately 1200 Hz if divided by 1024"; FPGA's output counter gives
+  the same two frequencies] [confirmed]. Output is a synthesised sine, 1.8 V p-p at the
   ULA pin [SM 6, 8.8].
 - **$FE04 receive** (read): bits enter at bit 7 and move towards bit 0;
   after a byte the register holds it in normal order. RxFull is set as
   soon as data bit 7 is in; cleared by reading $FE04 [AUG5 p212, p218
   figure 14.3a; TECH (says the original AUG had the direction reversed);
   MAME; CLK] [confirmed]. Also cleared, says AUG5, when the next start
-  bit arrives, leaving a two-bit (1.66 ms) window; CLK clears it one bit
-  later already; TECH: cleared "when the next bit comes along"
+  bit arrives, leaving a two-bit (1.66 ms) window; CLK clears it after
+  one more bit (the stop bit); TECH: cleared "when the next bit comes
+  along"
   [UNCERTAIN]. The MOS reads it inside the interrupt [derived, MOS
   $F4FF]. A byte not read in time is lost [AUG5 p218].
 - **$FE04 transmit** (write): bit 0 goes first; TxEmpty is set after bit
   7, before the stop bit, and cleared by the next write; while it stays
   set the ULA sends continuous 1s (high tone) [AUG5 p212, p219; TECH;
-  FPGA (2400 Hz "any other time")] [confirmed].
+  FPGA (2400 Hz whenever no byte is being sent)] [confirmed].
 - **High tone**: AUG5: 10 successive 1 bits (20 cycles of 2400 Hz), only
   with the motor bit on [AUG5 p212]; CLK: the 10-bit receive window all
   1s; MAME: a start bit of 1 and byte $FF; the real ULA uses an external
@@ -750,9 +758,9 @@ Matrix [AUG5 p225 table; MAME `INPUT_PORTS_START(electron)`; CLK
 
 | Col | Address | Bit 0 | Bit 1 | Bit 2 | Bit 3 |
 |---|---|---|---|---|---|
-| 0 | $BFFE | → ( \| \ ) | COPY ( [ ] ) | - | SPACE |
+| 0 | $BFFE | → ( \| \ ) | COPY ( [ ] ) | (none) | SPACE |
 | 1 | $BFFD | ← ( ^ ~ ) | ↓ ( _ } ) | RETURN | DELETE |
-| 2 | $BFFB | - = | ↑ ( £ { ) | : * | - |
+| 2 | $BFFB | - = | ↑ ( £ { ) | : * | (none) |
 | 3 | $BFF7 | 0 @ | P | ; + | / ? |
 | 4 | $BFEF | 9 ) | O | L | . > |
 | 5 | $BFDF | 8 ( | I | K | , < |
@@ -859,8 +867,8 @@ $BAA2-$BAA4].
 The 1770's INTRQ and DRQ are not connected (no lines drawn on the
 schematic) [TECH "simply a WD1770 drive controller without its interrupt
 line connected"; P3SCH; MAME and CLK connect nothing] [confirmed]. ADFS
-polls: it disables IRQs (SEI), writes the command, waits about 45 cycles,
-then loops on the status register: bit 0 (busy) clear means done, bit 1
+polls: it disables IRQs (SEI), writes the command, waits 44 cycles
+(22 us), then loops on the status register: bit 0 (busy) clear means done, bit 1
 (DRQ) means move one byte through $FCC7 [ADFS $BB25, $BA26-$BA5E]
 [derived]. During a transfer it also blanks the palette (OSBYTE &73) and,
 in modes 0-3, switches the ULA to mode 6 ($FE07 copy | $30) so RAM is never
@@ -889,16 +897,21 @@ puts it in slot 6, its own choice.)
   address / 16, sector = address mod 16; if track >= 80 the side is 1 and
   the track is track - 80. So a 640K disc holds sectors 0-1279 on side 0
   and 1280-2559 on side 1. At the end of track 79 on side 0 ADFS switches
-  to side 1 and restores to track 0 [ADFS $BEB0-$BEE6] [derived].
-  [UNCERTAIN: BBC ADFS's L format and emulators' .adl files are described
-  as side-interleaved (MAME `acorn_adfs_old_format`: file offset = (track
-  x 2 + side) x 4096); whether Electron ADFS 1.00 discs and BBC L discs
-  agree has not been checked.]
+  to side 1 and restores to track 0 [ADFS $BEB0-$BEE6] [derived]. The
+  FluxEngine documentation quoted in CLK says the same of Acorn ADFS in
+  general ("logical block numbering goes all the way up side 0 and then
+  all the way up side 1") [CLK `AcornADF.cpp` comment].
+- **Image side order** [UNCERTAIN]: MAME and CLK store 2-sided images
+  track-interleaved (file offset = (track x 2 + side) x 4096: T0 side 0,
+  T0 side 1, T1 side 0 ...) [MAME `acorn_adfs_old_format::get_image_offset`;
+  CLK `AcornADF::get_file_offset_for_position`], while a dump in ADFS
+  logical order would hold side 0 then side 1; CLK's comment notes that
+  emulators meet both and "the side order can't be reliably autodetected".
 - Images used by emulators [MAME `acorn_dsk.cpp` `acorn_adfs_old_format`]:
   `.ads` 160K (40 tracks, 1 side), `.adm` 320K (80, 1 side), `.adl` 640K
   (80, 2 sides, tracks interleaved in the file: T0S0, T0S1, T1S0 ...),
-  `.adf` any of these (most Electron discs are 320K single-sided, as `.adf`
-  sector dumps in track order). Identification: total sectors at offset
+  `.adf` any of these (decided by size; a 320K single-sided `.adf` is a
+  plain dump in track order, where the two orders agree). Identification: total sectors at offset
   $FC (3 bytes LE: $280, $500, $A00) and "Hugo" at $201 [MAME
   `find_size`; P3UG pp102-103]. CLK reads `.adf` too [CLK `AcornADF.cpp`].
 - Filesystem (old map) [P3UG pp102-105] [one source]: sectors 0 and 1 the
@@ -926,8 +939,10 @@ puts it in slot 6, its own choice.)
 - Register writes are checked by reading back in a loop until they
   match, so writes to track/sector/data must read back at once when not
   busy ($BC3F-$BC47, $BEFB-$BF03).
-- Status must not be read for about 32 us (1 MHz cycles) after a command
-  [WD177x]; ADFS's delay loop provides it ($BA29-$BA2C).
+- Busy should not be read for 24 us, status bits 1-7 for 32 us after a
+  command [WD177x]; ADFS waits 22 us ($BA29-$BA2C) plus a few
+  instructions. An emulated 1770 that sets busy at once on a command write
+  is safe [derived].
 - DRQ must be served within about 23.5 us at 250 kbit/s (one byte every
   32 us) [WD177x]: the poll loop does it with IRQs off.
 - Formatting is not in the ROM: the Welcome disc's EFORM utility does it
@@ -963,10 +978,10 @@ revolutions unless h = 1. CRC polynomial x^16 + x^12 + x^5 + 1.
 | SHIFT-BREAK | same | SHIFT read later | boot from the current filing system (startup byte bit 3 flips the sense) |
 
 Sources: [SM 6 (POR, RST); AUG5 OSBYTE &FD p84 ("0 - soft BREAK, 1 -
-power up reset, 2 - hard BREAK"), &C8 p67, &FF p85; derived, MOS $D8E8-$D92D ($FE00 bit
-1, CTRL tested as key $3A through $EC1E, type into $028D), $D8F0-$D90A
-(RAM clear on power-on or when $0258 asks), $DA56-$DA6A (SHIFT)]
-[confirmed]. The clear loop writes 0 to $0400-$7FFF but skips byte 0 of
+power up reset, 2 - hard BREAK"), &C8 p67, &FF p85; derived, MOS
+$D8E8-$D92D ($FE00 bit 1, CTRL tested as key $3A through $EC1E, type into
+$028D), $D8F0-$D90A (RAM clear on power-on or when $0258 asks),
+$DA56-$DA6A (SHIFT)] [confirmed]. The clear loop writes 0 to $0400-$7FFF but skips byte 0 of
 pages $05-$7F (an INY after each page) [derived, MOS $D8FB-$D90A].
 Whether BREAK resets the ULA's own registers [UNCERTAIN, 2.7]; the MOS
 rewrites them anyway.
@@ -1040,7 +1055,8 @@ printed page numbers unless noted.
   https://chrisacorns.computinghistory.org.uk/docs/Acorn/Manuals/Acorn_Plus3UG.pdf
 - **P1UG**: *Acorn Electron Plus 1 User Guide*.
   https://chrisacorns.computinghistory.org.uk/docs/Acorn/Manuals/Acorn_Plus1UG.pdf
-- **EUG**: *Acorn Electron User Guide* (keyboard, pp17-19).
+- **EUG**: *Acorn Electron User Guide* (keyboard pp17-19, SOUND pitch
+  pp117-118).
   https://archive.org/details/acorn-electron-user-guide
 - **BBCAUG**: *The Advanced User Guide for the BBC Microcomputer*, Bray,
   Dickens, Holmes, 1983 (cassette format pp347-348, workspace p280).
@@ -1070,8 +1086,9 @@ printed page numbers unless noted.
   `Storage/Tape/Parsers/Acorn.cpp`; `Storage/Disk/DiskImage/Formats/AcornADF.cpp`.
 - **FPGA**: David Banks (hoglet67), ElectronFpga,
   `src/common/ElectronULA.vhd` (2020), GPL-3.0, read only to confirm
-  behaviour; its "2MHz/1MHz with Contention (match original Electron)"
-  clocking was tuned against the SD-CONT measurements.
+  behaviour (only its behaviour is described here, no text or code is
+  quoted beyond signal names); its default clocking mode, meant to match
+  the original Electron, was tuned against the SD-CONT measurements.
   https://github.com/hoglet67/ElectronFpga
 - **MOS $xxxx**: Acorn Electron MOS 1.00, upper half of `os_basic.ic2`
   (1.4), disassembled for this document with a small Python disassembler;

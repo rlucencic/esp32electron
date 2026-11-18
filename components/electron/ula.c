@@ -11,18 +11,18 @@
  *          and BASIC, pages 8-11, only another of 8-15 can be selected:
  *          the MOS selects 12 first); bits 4-7 clear display end, the
  *          clock, high tone, NMI
- *   $FE06  write: the counter (sound: 1 MHz / 16 / (n + 1); the cassette)
+ *   $FE06  write: the counter (sound: 1 MHz / 32 / (n + 1); the cassette)
  *   $FE07  write: bits 1-2 00 cassette in, 01 sound, 10 cassette out;
  *          bits 3-5 the display mode; bit 6 the cassette motor; bit 7 the
  *          CAPS LK light
  *   $FE08-$FE0F  write: the palette (video.c)
  *
+ * The display end interrupt comes at the HS after the picture's last line,
+ * the 50 Hz one in line 99 (elk.c's field loop).
  * (docs/electron-hardware.md has the sources and what is still open.)
  */
 #include <string.h>
 #include "elk_internal.h"
-
-#define RTC_LINE        99              /* the 50 Hz interrupt, part way down the picture */
 
 void elk_ula_update_irq(void)
 {
@@ -78,7 +78,7 @@ void elk_ula_write(uint16_t a, uint8_t v)
 {
     switch (a & 0x0F) {
     case 0x0:
-        elk.int_enable = v;
+        elk.int_enable = v & 0x7C;      /* bits 6-2 */
         elk_ula_update_irq();
         break;
     case 0x2:
@@ -113,7 +113,7 @@ void elk_ula_write(uint16_t a, uint8_t v)
     case 0x7: {
         elk.control = v;
         int mode = (v >> 3) & 7;
-        elk.mode = mode == 7 ? 6 : mode;
+        elk.mode = mode == 7 ? 4 : mode;        /* 7 is the ULA's mode 4 */
         break;
     }
     default:
@@ -124,14 +124,8 @@ void elk_ula_write(uint16_t a, uint8_t v)
     }
 }
 
-/* At each line's start: the frame's interrupts */
-void elk_ula_line(void)
+void elk_ula_raise(uint8_t bits)
 {
-    if (elk.line == elk_display_lines()) {
-        elk.int_status |= INT_DISPLAY_END;
-        elk_ula_update_irq();
-    } else if (elk.line == RTC_LINE) {
-        elk.int_status |= INT_RTC;
-        elk_ula_update_irq();
-    }
+    elk.int_status |= bits;
+    elk_ula_update_irq();
 }

@@ -67,27 +67,40 @@ Console commands (`main/main.c`): `k <n>` tap matrix key n (`electron.h`'s
 
 ## The machine
 
-- **Time**: 2 MHz ticks, the 6502 core's cycles; a line 128 (64 us), a
-  frame 312 lines (39936 ticks, 50.08 Hz). Line 0 is the picture's first.
-- **Memory and timing** (`elk.c`): ROM reads at 2 MHz through the core's
-  page pointers (a tick each); RAM and the ULA's registers through the bus
-  callbacks, which wait for the 1 MHz clock (an even tick) and take two
-  ticks; in modes 0-3 a RAM access in a picture line's first 80 ticks (the
-  ULA's fetch) waits for its end (not in mode 3's two blank lines a row).
-  $8000-$BFFF by the ROM page: 8-9 the keyboard, 10-11 BASIC, 4 the Plus
-  3's ADFS, others $FF. $FC00-$FDFF the expansion bus (nothing yet: $FF),
-  $FE00-$FEFF the ULA.
+- **Time**: 2 MHz ticks, the 6502 core's cycles; a line 128 (64 us),
+  tick 0 its first pixel; interlaced fields of 312 and 313 lines in turn
+  (39936 and 40064 ticks: 50 Hz). Line 0 is the picture's first.
+- **Memory and timing** (`elk.c`; docs 4.4): ROM reads at 2 MHz through
+  the core's page pointers (a tick each); RAM, the ULA's registers, the
+  keyboard and $FC00-$FDFF through the bus callbacks at 1 MHz: an access
+  takes the next slot starting on an even tick (2 ticks from an even start,
+  3 from an odd one); in modes 0-3 a RAM slot in a pixel line's first 80
+  ticks is the ULA's and the access waits for the one at tick 80 (pixel
+  lines: 0-255, in mode 3 lines 0-7 of each 10-line row). The BASIC loop
+  `TIME=0:FOR A=0 TO 10000:NEXT` takes 14.71 / 14.74 / 14.89 / 11.94 /
+  7.07 / 7.08 / 7.07 s in modes 0-6 on the host, two real Electrons 14.71
+  / 14.74 / 14.89-14.90 / 11.92-11.94 / 7.07-7.08 (docs 4.5). $8000-$BFFF
+  by the ROM page: 8-9 the keyboard, 10-11 BASIC, 4 the Plus 3's ADFS,
+  others $FF. $FC00-$FDFF the expansion bus (nothing yet: $FF), $FE00-$FEFF
+  the ULA.
 - **The ULA** (`ula.c`): interrupt status and enables ($FE00; the
   power-on bit cleared by its read), screen start ($FE02/$FE03: address
   bits 6-14, taken at the frame's start), ROM page and interrupt clears
   ($FE05: from pages 8-11 only to another of 8-15), counter ($FE06),
   control ($FE07: sound/cassette, mode, motor, CAPS LK), palette
-  ($FE08-$FE0F). The display end interrupt as the picture ends (line 256,
-  250 in modes 3 and 6), the 50 Hz one at line 99 (to be checked).
+  ($FE08-$FE0F); enables bits 6-2 only; mode 7 is mode 4. Display end at
+  tick 96 (the HS) of the picture's last line (255, 249 in modes 3 and 6);
+  the 50 Hz interrupt at line 99, tick -2 in the 312-line field and 62 in
+  the 313-line one (docs 2.5: the User Guide's scope measurements).
 - **The picture** (`video.c`): BBC-style character rows (8 lines, 10 in
-  modes 3 and 6), wrapping past $7FFF by the mode's screen size; each line
-  recorded at its start (mode, palette registers, bytes), a finished frame
-  that differs from the last shown handed to the presenter; 640 x 256.
+  modes 3 and 6); the 15-bit address counter coming to $0000-$07FF (past
+  $7FFF, or a start that low) goes on at the mode's base plus its low 11
+  bits; each line recorded at its start (mode, palette registers, bytes), a
+  finished frame that differs from the last shown handed to the presenter;
+  640 x 256. The palette (docs 3.4): a pixel's 4-bit index (2 colours 0/8,
+  4 colours 0/2/8/10, 16 all) to 8 colours, a bit a gun, 1 = off; each
+  register pair holds four indices (10 8 2 0, 14 12 6 4, 15 13 7 5, 11 9 3
+  1). Checked: mode 2's 16 colours, 5's and 0's as the MOS sets them.
 - **The keyboard** (`keyboard.c`, `main/keymap.c`): 14 columns of 4 keys
   (MAME's electron.cpp has the layout); with ROM page 8 or 9 a read of
   $8000-$BFFF ORs the columns whose address line A0-A13 is low into bits
@@ -102,8 +115,9 @@ Console commands (`main/main.c`): `k <n>` tap matrix key n (`electron.h`'s
   ESCAPE, = LEFT, [ ] UP DOWN, \ COPY; Backspace and Delete DELETE, the
   cursor keys the Electron's, End and Insert COPY, Caps Lock SHIFT + FUNC,
   F1-F10 FUNC + 1-9, 0 (f1-f9, f0), Pause and F12 BREAK, the keypad.
-- **Sound** (`sound.c`): $FE07 bits 1-2 01: a square wave of 1 MHz / 16 /
-  (counter + 1), averaged over half lines.
+- **Sound** (`sound.c`): $FE07 bits 1-2 01: a square wave of 1 MHz / 32 /
+  (counter + 1) (docs 5: the MOS's lowest note is B2, 123.5 Hz), averaged
+  over half lines.
 - Checked (2026-11-18): the host build boots to "Acorn Electron", "BASIC",
   ">" in 32 frames (the bell glyph after the name is the MOS's own: VDU 7
   and a bitmap at $C42B on a cold start, $DA3F); the MaTouch the same at
