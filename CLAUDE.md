@@ -119,6 +119,9 @@ Console commands (`main/main.c`): `k <n>` tap matrix key n (`electron.h`'s
   ESCAPE, = LEFT, [ ] UP DOWN, \ COPY; Backspace and Delete DELETE, the
   cursor keys the Electron's, End and Insert COPY, Caps Lock SHIFT + FUNC,
   F1-F10 FUNC + 1-9, 0 (f1-f9, f0), Pause and F12 BREAK, the keypad.
+  By hand: the Tab5 Keyboard works (the user, 2026-11-18). Not checked by
+  hand yet (as with the QL: the user reports what fails): a Bluetooth or
+  USB keyboard's FUNC keys, CAPS LK, COPY editing, BREAK, ESCAPE.
 - **Sound** (`sound.c`): $FE07 bits 1-2 01: a square wave of 1 MHz / 32 /
   (counter + 1) (docs 5: the MOS's lowest note is B2, 123.5 Hz), averaged
   over half lines.
