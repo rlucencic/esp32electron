@@ -79,13 +79,42 @@ static void status(emu_json_t *j, int section)
     if (section != EMU_STATUS_ROWS) {
         return;
     }
-    char text[96];
+    static const struct {
+        const char *size;
+        uint16_t base;
+    } modes[7] = {
+        { "640 × 256, 2 colours, 80 × 32 text", 0x3000 }, { "320 × 256, 4 colours, 40 × 32 text", 0x3000 },
+        { "160 × 256, 16 colours, 20 × 32 text", 0x3000 }, { "640 × 200, 2 colours, 80 × 25 text", 0x4000 },
+        { "320 × 256, 2 colours, 40 × 32 text", 0x5800 }, { "160 × 256, 4 colours, 20 × 32 text", 0x5800 },
+        { "320 × 200, 2 colours, 40 × 25 text", 0x6000 },
+    };
+    char text[160];
     elk_status_t s;
     elk_get_status(&s);
-    emu_json_row(j, "System", "Acorn Electron, 32 KB");
-    emu_json_row(j, "ROM", "MOS 1.00, BBC BASIC II");
-    snprintf(text, sizeof(text), "Mode %u%s", s.mode, s.caps_lock ? ", CAPS LK" : "");
+    emu_json_row(j, "System", "Acorn Electron: a 6502A at 2 MHz (1 MHz to RAM), 32 KB RAM, the ULA");
+    const char *page = s.rom_page == 8 || s.rom_page == 9 ? "the keyboard" :
+                       s.rom_page == 10 || s.rom_page == 11 ? "BASIC" : NULL;
+    if (page) {
+        snprintf(text, sizeof(text), "MOS 1.00, BBC BASIC II; at &amp;8000 now: %s", page);
+    } else {
+        snprintf(text, sizeof(text), "MOS 1.00, BBC BASIC II; at &amp;8000 now: ROM %u (empty)", s.rom_page);
+    }
+    emu_json_row(j, "ROM", text);
+    unsigned m = s.mode < 7 ? s.mode : 6;
+    snprintf(text, sizeof(text), "Mode %u: %s; screen memory &amp;%04X-&amp;7FFF, starting at &amp;%04X%s", m, modes[m].size,
+             modes[m].base, s.screen_start, m < 4 ? " (the CPU waits for RAM while a line is drawn)" : "");
     emu_json_row(j, "Screen", text);
+    if (s.comms == 1) {
+        snprintf(text, sizeof(text), "A tone of %lu Hz (&amp;FE06 = %u)", 1000000ul / (32ul * (s.counter + 1)), s.counter);
+    } else {
+        snprintf(text, sizeof(text), "Off%s", s.comms == 0 ? "" : s.comms == 2 ? " (cassette output)" : "");
+    }
+    emu_json_row(j, "Sound", text);
+    snprintf(text, sizeof(text), "CAPS LK %s; by position, Tab and Alt FUNC, F1-F10 f1-f9 and f0, End COPY, "
+             "Pause or F12 BREAK", s.caps_lock ? "on" : "off");
+    emu_json_row(j, "Keyboard", text);
+    emu_json_row(j, "Cassette", s.motor ? "Motor on (tapes to come)" : "Motor off (tapes to come)");
+    emu_json_row(j, "Expansions", "None (the Plus 3's floppy disks to come)");
 }
 
 /* ---- Console ---- */

@@ -279,4 +279,8 @@ void elk_get_status(elk_status_t *s)
     s->rom_page = elk.rom_page;
     s->caps_lock = (elk.control & 0x80) != 0;
     s->motor = (elk.control & 0x40) != 0;
+    s->comms = (elk.control >> 1) & 3;
+    s->counter = elk.counter;
+    s->screen_start = elk.screen_start;
+    s->int_enable = elk.int_enable;
 }

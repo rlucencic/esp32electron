@@ -45,7 +45,12 @@ bash -c '. ~/.espressif/tools/activate_idf_v5.5.6.sh >/dev/null 2>&1; idf.py bui
 
 Console commands (`main/main.c`): `k <n>` tap matrix key n (`electron.h`'s
 `ELK_KEY_*`: column * 4 + row; 6 RETURN, 3 SPACE, 52 ESCAPE), `K <n> 0|1`,
-`T <text>` (`\n` RETURN; a key every 6 frames), `B` BREAK.
+`T <text>` (`\n` RETURN; a key every 6 frames; the console takes lines of
+about 128 characters: longer ones are cut, so type programs a line at a
+time), `B` BREAK. The web page's machine card (`status()`): the system, the
+ROM at $8000 now, the mode (size, colours, screen memory, start, whether
+the CPU waits), the tone's pitch, CAPS LK and the keys' places, the
+cassette motor, the expansions.
 
 ## Layout
 
@@ -154,8 +159,8 @@ Console commands (`main/main.c`): `k <n>` tap matrix key n (`electron.h`'s
   screen base or above count now.
 - **Speed on the MaTouch** (2026-11-18, core 1 busy): the BASIC prompt 64%
   -> 57% (the comparison) -> 44% (slow pages), the mode 4 loop 81% -> 71%,
-  the mode 1 loop (contended: RAM still through callbacks) 69%, its line
-  copy then 9.7% (now without the wrap test inside a line).
+  the mode 1 loop (contended: RAM still through callbacks) 69% -> 61%
+  (its line copy 9.7% -> 5.3%, without the wrap test inside a line).
 
 ## Testing
 

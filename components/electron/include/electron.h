@@ -82,6 +82,10 @@ typedef struct {
     uint8_t rom_page;           /* $FE05's ROM number */
     bool caps_lock;             /* the CAPS LK light */
     bool motor;                 /* the cassette motor */
+    uint8_t comms;              /* $FE07 bits 2-1: 0 cassette in, 1 sound, 2 cassette out */
+    uint8_t counter;            /* $FE06: the sound's divider */
+    uint16_t screen_start;      /* $FE02/$FE03 */
+    uint8_t int_enable;         /* $FE00's enables */
 } elk_status_t;
 
 void elk_get_status(elk_status_t *s);
