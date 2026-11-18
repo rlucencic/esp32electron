@@ -1,0 +1,101 @@
+#pragma once
+
+#include <stdbool.h>
+#include <stdint.h>
+#include "electron.h"
+#include "m6502.h"
+
+#ifdef ESP_PLATFORM
+#include "esp_log.h"
+#include "esp_attr.h"
+#include "esp_heap_caps.h"
+#define ELK_LOGI(...)   ESP_LOGI("elk", __VA_ARGS__)
+#define ELK_LOGW(...)   ESP_LOGW("elk", __VA_ARGS__)
+/* Buffers the CPU doesn't run in: PSRAM (the MaTouch's internal RAM is
+ * short: esp32ql's lessons)
+ */
+#define ELK_SLOW_ALLOC(n) heap_caps_calloc(1, (n), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+#else
+#include <stdio.h>
+#include <stdlib.h>
+#define ELK_LOGI(...)   do { printf("elk: " __VA_ARGS__); printf("\n"); } while (0)
+#define ELK_LOGW(...)   do { printf("elk: warning: " __VA_ARGS__); printf("\n"); } while (0)
+#define ELK_SLOW_ALLOC(n) calloc(1, (n))
+#endif
+
+/* ---- Time: 2 MHz ticks (the 6502 core's cycles) ----
+ *
+ * A line is 64 us, 128 ticks; a frame 312 lines (50.08 Hz). Line 0 is the
+ * picture's first line; the picture is 256 lines (250 in modes 3 and 6),
+ * the rest of the frame border and blanking.
+ */
+#define ELK_LINE_TICKS      128
+#define ELK_LINES           312
+#define ELK_FRAME_TICKS     (ELK_LINE_TICKS * ELK_LINES)
+#define ELK_CPU_HZ          2000000
+#define ELK_DISPLAY_TICKS   80          /* a line's fetch: 40 us */
+
+/* The ULA's interrupt bits ($FE00) */
+enum {
+    INT_MASTER = 0x01,
+    INT_POWER_ON = 0x02,
+    INT_DISPLAY_END = 0x04,
+    INT_RTC = 0x08,
+    INT_RX_FULL = 0x10,
+    INT_TX_EMPTY = 0x20,
+    INT_HIGH_TONE = 0x40,
+};
+
+typedef struct {
+    elk_config_t cfg;
+    m6502_t cpu;
+    uint8_t *ram;
+    const uint8_t *basic, *mos, *adfs;
+
+    uint64_t frame_start;               /* the tick line 0 began at */
+    int line;                           /* the line being run */
+    uint32_t frames;
+
+    /* The ULA */
+    uint8_t int_status, int_enable;
+    uint8_t rom_page;                   /* $FE05 bits 0-3 */
+    uint16_t screen_start;              /* $FE02/$FE03: the next frame's */
+    uint8_t counter;                    /* $FE06 */
+    uint8_t control;                    /* $FE07 */
+    uint8_t palette[8];                 /* $FE08-$FE0F */
+    uint8_t mode;                       /* $FE07 bits 3-5, 0-6 */
+
+    /* The keyboard: a bit per row (0-3), per column (0-13): 1 pressed */
+    volatile uint8_t matrix[14];
+    bool break_down;
+} elk_t;
+
+extern elk_t elk;
+
+static inline uint64_t elk_line_start(void)
+{
+    return elk.frame_start + (uint64_t)elk.line * ELK_LINE_TICKS;
+}
+
+/* ula.c */
+void elk_ula_reset(bool power_on);
+uint8_t elk_ula_read(uint16_t addr);
+void elk_ula_write(uint16_t addr, uint8_t v);
+void elk_ula_update_irq(void);
+void elk_ula_line(void);                /* at each line's start */
+bool elk_contended_mode(void);          /* modes 0-3: no CPU RAM access during the fetch */
+int elk_display_lines(void);            /* 256, or 250 in modes 3 and 6 */
+void elk_map_rom(void);                 /* $8000-$BFFF for the current ROM page */
+
+/* video.c */
+bool elk_video_init(void);
+void elk_video_frame_start(void);
+void elk_video_line(int line);          /* record a picture line */
+void elk_video_frame_end(void);
+
+/* sound.c */
+void elk_sound_line(void);
+
+/* keyboard.c */
+uint8_t elk_keyboard_read(uint16_t addr);
+void elk_keyboard_frame(void);
