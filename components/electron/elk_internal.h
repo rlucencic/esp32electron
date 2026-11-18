@@ -5,6 +5,10 @@
 #include "electron.h"
 #include "m6502.h"
 
+#if !M6502_SLOW
+#error "the Electron needs the 6502 core's slow pages: CONFIG_M6502_SLOW_PAGES (sdkconfig.defaults), -DM6502_SLOW_PAGES (host)"
+#endif
+
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
 #include "esp_attr.h"
@@ -68,6 +72,15 @@ typedef struct {
     uint8_t palette[8];                 /* $FE08-$FE0F */
     uint8_t mode;                       /* $FE07 bits 3-5, 0-6 */
 
+    /* Something the picture shows changed (a write to RAM at the mode's
+     * screen base or above, the palette, the mode, the start; BASIC's stack
+     * is just under the screen): video.c compares the
+     * field's picture with the last one shown only for the two fields from
+     * then (a write after its line was recorded shows in the next)
+     */
+    uint8_t screen_touched;
+    uint16_t screen_base;               /* the mode's: $3000, $4000, $5800, $6000 */
+
     /* The keyboard: a bit per row (0-3), per column (0-13): 1 pressed */
     volatile uint8_t matrix[14];
     bool break_down;
@@ -80,15 +93,26 @@ static inline uint64_t elk_line_start(void)
     return elk.frame_start + (uint64_t)elk.line * ELK_LINE_TICKS;
 }
 
+/* Modes 0-3: no CPU RAM access during a pixel line's fetch */
+static inline bool elk_contended_mode(void)
+{
+    return elk.mode < 4;
+}
+
+/* The picture's lines: 256, or 250 in modes 3 and 6 */
+static inline int elk_display_lines(void)
+{
+    return (elk.mode == 3 || elk.mode == 6) ? 250 : 256;
+}
+
 /* ula.c */
 void elk_ula_reset(bool power_on);
 uint8_t elk_ula_read(uint16_t addr);
 void elk_ula_write(uint16_t addr, uint8_t v);
 void elk_ula_update_irq(void);
 void elk_ula_raise(uint8_t bits);       /* interrupt conditions */
-bool elk_contended_mode(void);          /* modes 0-3: no CPU RAM access during the fetch */
-int elk_display_lines(void);            /* 256, or 250 in modes 3 and 6 */
 void elk_map_rom(void);                 /* $8000-$BFFF for the current ROM page */
+void elk_map_ram(void);                 /* $0000-$7FFF for the mode */
 
 /* video.c */
 bool elk_video_init(void);

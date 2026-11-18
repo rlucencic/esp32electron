@@ -71,8 +71,21 @@ void elk_video_line(int line)
     memcpy(r->palette, elk.palette, sizeof(r->palette));
     r->blank = line >= elk_display_lines() || s_row_line >= 8;
     if (!r->blank) {
-        for (int c = 0; c < n; c++) {
-            r->bytes[c] = elk.ram[wrap(s_row_addr + c * 8 + s_row_line)];
+        uint32_t first = s_row_addr + s_row_line, last = first + (n - 1) * 8;
+        if (last < 0x8000) {
+            /* (most lines: no wrap inside) */
+            const uint8_t *src = elk.ram + first;
+            uint8_t *dst = r->bytes;
+            for (int c = 0; c < n; c += 4, src += 32, dst += 4) {
+                dst[0] = src[0];
+                dst[1] = src[8];
+                dst[2] = src[16];
+                dst[3] = src[24];
+            }
+        } else {
+            for (int c = 0; c < n; c++) {
+                r->bytes[c] = elk.ram[wrap(first + c * 8)];
+            }
         }
     }
     if (++s_row_line >= lines_per_row) {
@@ -86,8 +99,12 @@ void elk_video_frame_end(void)
     if (s_frames == NULL) {
         return;
     }
+    if (elk.screen_touched == 0) {
+        return;                         /* nothing shown changed: keep writing this one */
+    }
+    elk.screen_touched--;
     if (memcmp(&s_frames[s_writing], &s_frames[s_latest], sizeof(frame_t)) == 0) {
-        return;                         /* the same picture: keep writing this one */
+        return;                         /* the same picture */
     }
     s_latest = s_writing;
     s_signature++;

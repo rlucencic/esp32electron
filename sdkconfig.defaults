@@ -114,3 +114,7 @@ CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
 
 # The board runtime (../esp32emu): network name
 CONFIG_EMU_HOSTNAME="acorn-electron"
+
+# The 6502 core's slow pages: the Electron's RAM at 1 MHz without a bus
+# callback (../esp32emu/components/m6502)
+CONFIG_M6502_SLOW_PAGES=y

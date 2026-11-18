@@ -38,22 +38,13 @@ void elk_ula_reset(bool power_on)
     elk.rom_page = 10;                  /* BASIC (the MOS selects it anyway) */
     elk.control = 0;
     elk.mode = 0;
+    elk.screen_base = 0x3000;
     elk.counter = 0;
     if (power_on) {
         elk.screen_start = 0x3000;
         memset(elk.palette, 0, sizeof(elk.palette));
     }
     elk_ula_update_irq();
-}
-
-bool elk_contended_mode(void)
-{
-    return elk.mode < 4;
-}
-
-int elk_display_lines(void)
-{
-    return (elk.mode == 3 || elk.mode == 6) ? 250 : 256;
 }
 
 uint8_t elk_ula_read(uint16_t a)
@@ -74,6 +65,17 @@ uint8_t elk_ula_read(uint16_t a)
     }
 }
 
+/* (the picture changes only if the start does: the MOS rewrites registers
+ * with the values they have)
+ */
+static void set_start(uint16_t start)
+{
+    if (start != elk.screen_start) {
+        elk.screen_start = start;
+        elk.screen_touched = 2;
+    }
+}
+
 void elk_ula_write(uint16_t a, uint8_t v)
 {
     switch (a & 0x0F) {
@@ -82,10 +84,10 @@ void elk_ula_write(uint16_t a, uint8_t v)
         elk_ula_update_irq();
         break;
     case 0x2:
-        elk.screen_start = (elk.screen_start & 0x7E00) | ((v & 0xE0) << 1);
+        set_start((elk.screen_start & 0x7E00) | ((v & 0xE0) << 1));
         break;
     case 0x3:
-        elk.screen_start = ((v & 0x3F) << 9) | (elk.screen_start & 0x01C0);
+        set_start(((v & 0x3F) << 9) | (elk.screen_start & 0x01C0));
         break;
     case 0x4:
         elk.int_status &= ~INT_TX_EMPTY;
@@ -113,12 +115,19 @@ void elk_ula_write(uint16_t a, uint8_t v)
     case 0x7: {
         elk.control = v;
         int mode = (v >> 3) & 7;
-        elk.mode = mode == 7 ? 4 : mode;        /* 7 is the ULA's mode 4 */
+        mode = mode == 7 ? 4 : mode;            /* 7 is the ULA's mode 4 */
+        if (mode != elk.mode) {
+            elk.mode = mode;
+            elk.screen_touched = 2;
+            elk.screen_base = mode < 3 ? 0x3000 : mode == 3 ? 0x4000 : mode < 6 ? 0x5800 : 0x6000;
+            elk_map_ram();
+        }
         break;
     }
     default:
-        if ((a & 0x0F) >= 0x8) {
+        if ((a & 0x0F) >= 0x8 && elk.palette[(a & 0x0F) - 8] != v) {
             elk.palette[(a & 0x0F) - 8] = v;
+            elk.screen_touched = 2;
         }
         break;
     }

@@ -5,7 +5,7 @@ M6502     := ../../../../esp32emu/components/m6502
 EMUDBG    := ../../../../esp32emu/components/emudbg
 ELK       := ..
 BUILD     := build
-CFLAGS    := -O2 -g -Wall -Wextra -Wno-unused-parameter -DM6502_HOST_HOOK -DELK_HOST_HOOK -I$(ELK)/include -I$(ELK) \
+CFLAGS    := -O2 -g -Wall -Wextra -Wno-unused-parameter -DM6502_HOST_HOOK -DELK_HOST_HOOK -DM6502_SLOW_PAGES -I$(ELK)/include -I$(ELK) \
              -I$(M6502)/include -I$(EMUDBG)/include
 ROM       ?= $(ROOT)/roms/os_basic.ic2
 FRAMES    ?= 300

@@ -71,8 +71,13 @@ Console commands (`main/main.c`): `k <n>` tap matrix key n (`electron.h`'s
   tick 0 its first pixel; interlaced fields of 312 and 313 lines in turn
   (39936 and 40064 ticks: 50 Hz). Line 0 is the picture's first.
 - **Memory and timing** (`elk.c`; docs 4.4): ROM reads at 2 MHz through
-  the core's page pointers (a tick each); RAM, the ULA's registers, the
-  keyboard and $FC00-$FDFF through the bus callbacks at 1 MHz: an access
+  the core's page pointers (a tick each); RAM in modes 4-6 below the
+  screen through them too, as the core's slow pages
+  (`CONFIG_M6502_SLOW_PAGES`: the next even tick, two ticks; the screen's
+  pages through the callbacks, which notice what changes the picture);
+  RAM in modes 0-3, the ULA's registers, the keyboard and $FC00-$FDFF
+  through the bus callbacks at 1 MHz (`elk_map_ram()` on each mode
+  change): an access
   takes the next slot starting on an even tick (2 ticks from an even start,
   3 from an odd one); in modes 0-3 a RAM slot in a pixel line's first 80
   ticks is the ULA's and the access waits for the one at tick 80 (pixel
@@ -98,7 +103,11 @@ Console commands (`main/main.c`): `k <n>` tap matrix key n (`electron.h`'s
   modes 3 and 6); the 15-bit address counter coming to $0000-$07FF (past
   $7FFF, or a start that low) goes on at the mode's base plus its low 11
   bits; each line recorded at its start (mode, palette registers, bytes), a
-  finished frame that differs from the last shown handed to the presenter;
+  finished frame that differs from the last shown handed to the presenter
+  (compared only after a change: a RAM write of a new value at the mode's
+  screen base or above, a palette, mode or start register given a new
+  value; the MOS rewrites its cursor's byte every field, BASIC's stack is
+  just under the screen);
   640 x 256. The palette (docs 3.4): a pixel's 4-bit index (2 colours 0/8,
   4 colours 0/2/8/10, 16 all) to 8 colours, a bit a gun, 1 = off; each
   register pair holds four indices (10 8 2 0, 14 12 6 4, 15 13 7 5, 11 9 3
@@ -134,6 +143,19 @@ Console commands (`main/main.c`): `k <n>` tap matrix key n (`electron.h`'s
   (`"\~[]{}_^@#$%&*()+-=;:,.<>/?|`).
 
 ## Lessons
+
+- **Watch what is written, not that it is**: a "picture changed" flag set
+  by any RAM write at $3000 or above (BASIC's stack under the screen), by
+  any write to $FE07 or the palette (the MOS rewrites them with the same
+  values) and by the cursor routine's byte (rewritten every field, $C9C5)
+  made the frame comparison run every field: 5% of the MaTouch's core 1,
+  in the ROM's `memcmp` (`?40056000` in the profile: the S3 ROM's ELF has
+  no sizes; sampling raw PCs found it). Only new values at the mode's
+  screen base or above count now.
+- **Speed on the MaTouch** (2026-11-18, core 1 busy): the BASIC prompt 64%
+  -> 57% (the comparison) -> 44% (slow pages), the mode 4 loop 81% -> 71%,
+  the mode 1 loop (contended: RAM still through callbacks) 69%, its line
+  copy then 9.7% (now without the wrap test inside a line).
 
 ## Testing
 

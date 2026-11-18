@@ -44,13 +44,29 @@ void elk_map_rom(void)
     }
 }
 
+/* RAM ($0000-$7FFF) for the mode: in modes 0-3 through the callbacks
+ * (their timing, the contention); in 4-6, which never stall, the pages
+ * below the screen through the core's pointers as slow pages (1 MHz: the
+ * next even tick, two ticks), the screen's still through the callbacks
+ * (they see what changes the picture)
+ */
+void elk_map_ram(void)
+{
+    for (int p = 0; p < 0x80; p++) {
+        bool direct = !elk_contended_mode() && p < (elk.screen_base >> 8);
+        elk.cpu.rd[p] = direct ? elk.ram + p * 256 : NULL;
+        elk.cpu.wr[p] = direct ? elk.ram + p * 256 : NULL;
+        elk.cpu.slow[p] = direct;
+    }
+}
+
 static void map_memory(void)
 {
     for (int p = 0; p < 256; p++) {
         elk.cpu.rd[p] = NULL;
         elk.cpu.wr[p] = NULL;
     }
-    /* RAM ($0000-$7FFF) through the callbacks: its timing */
+    elk_map_ram();
     for (int p = 0xC0; p < 0x100; p++) {
         if (p < 0xFC || p == 0xFF) {
             elk.cpu.rd[p] = (uint8_t *)elk.mos + (p - 0xC0) * 256;
@@ -131,6 +147,9 @@ static void bus_write(void *ctx, uint16_t a, uint8_t v)
 #endif
     if (a < 0x8000) {
         wait_ram(c);
+        if (a >= elk.screen_base && elk.ram[a] != v) {
+            elk.screen_touched = 2;     /* (the MOS rewrites a cursor byte every field) */
+        }
         elk.ram[a] = v;
         return;
     }
