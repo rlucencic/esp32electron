@@ -9,6 +9,7 @@
 #include <strings.h>
 #include <time.h>
 #include "elk_internal.h"
+#include "uef.h"
 
 #define SECTOR_SIZE 256
 #define SECTORS_PER_TRACK 16
@@ -602,6 +603,105 @@ static size_t disk_capacity(FILE *file, const char *path, size_t length)
     return length;
 }
 
+/* Implicit UEF sides are in logical sector order. Older UEFs leave the
+ * track count at zero, in which case the catalogue gives the capacity.
+ */
+static bool load_uef_disk(const char *path, drive_t *drive)
+{
+    size_t length;
+    uint8_t *uef = uef_load(path, &length);
+    if (!uef) {
+        return false;
+    }
+    const uint8_t *info = NULL;
+    const uint8_t *sides[2] = { NULL, NULL };
+    size_t lengths[2] = { 0, 0 };
+    bool valid = true;
+    for (size_t offset = UEF_HEADER; offset < length && valid;) {
+        unsigned id = uef_le16(uef + offset);
+        size_t bytes = uef_le32(uef + offset + 2);
+        const uint8_t *data = uef + offset + UEF_CHUNK_HEADER;
+        if (id == 0x0200) {
+            valid = !info && bytes >= 6 && data[0] == 0 && uef_le16(data + 1) == SECTOR_SIZE;
+            info = data;
+        } else if (id == 0x0201) {
+            unsigned side = bytes ? data[0] >> 7 : 0;
+            valid = bytes > 1 && !(data[0] & 0x7F) && !sides[side];
+            if (valid) {
+                sides[side] = data + 1;
+                lengths[side] = bytes - 1;
+            }
+        } else if (id == 0x0202) {
+            valid = false;
+        }
+        offset += UEF_CHUNK_HEADER + bytes;
+    }
+    if (!valid || !info || !sides[0]) {
+        free(uef);
+        return false;
+    }
+    int sectors = info[3];
+    int tracks = info[4];
+    int side_count = sides[1] ? 2 : 1;
+    if (sectors == SECTORS_PER_TRACK && lengths[0] >= SECTOR_SIZE) {
+        unsigned total = uef_le16(sides[0] + 0xFC) | (unsigned)sides[0][0xFE] << 16;
+        side_count = total == ELK_ADFS_LARGE / SECTOR_SIZE ? 2 : side_count;
+        if (!tracks && (total == 640 || total == 1280 || total == 2560)) {
+            tracks = total / (side_count * sectors);
+        }
+    } else if (sectors == DFS_SECTORS_PER_TRACK && !tracks && lengths[0] >= 2 * SECTOR_SIZE) {
+        unsigned total = ((sides[0][0x106] & 3) << 8) | sides[0][0x107];
+        if (total == 400 || total == 800) {
+            tracks = total / sectors;
+        }
+    }
+    size_t side_size = (size_t)tracks * sectors * SECTOR_SIZE;
+    valid = (tracks == 40 || tracks == 80) && lengths[0] <= side_size && lengths[1] <= side_size &&
+            ((sectors == SECTORS_PER_TRACK && (side_count == 1 || tracks == 80)) ||
+             (sectors == DFS_SECTORS_PER_TRACK && side_count == 1));
+    if (valid) {
+        drive->size = side_size * side_count;
+        drive->image = ELK_SLOW_ALLOC(drive->size);
+        valid = drive->image != NULL;
+    }
+    if (valid) {
+        for (int side = 0; side < side_count; side++) {
+            if (sides[side]) {
+                memcpy(drive->image + side * side_size, sides[side], lengths[side]);
+            }
+        }
+        drive->tracks = tracks;
+        drive->sides = side_count;
+        drive->sectors_per_track = sectors;
+        drive->protect = true;
+    }
+    free(uef);
+    return valid;
+}
+
+static bool load_raw_disk(const char *path, drive_t *drive)
+{
+    FILE *file = fopen(path, "r+b");
+    drive->protect = !file;
+    if (!file) {
+        file = fopen(path, "rb");
+    }
+    if (!file) {
+        return false;
+    }
+    long length = fseek(file, 0, SEEK_END) == 0 ? ftell(file) : -1;
+    drive->size = length > 0 ? disk_capacity(file, path, length) : 0;
+    bool ok = length > 0 && (size_t)length <= drive->size && geometry(path, drive->size, drive) &&
+              fseek(file, 0, SEEK_SET) == 0;
+    if (ok) {
+        drive->image = ELK_SLOW_ALLOC(drive->size);
+        ok = drive->image && fread(drive->image, 1, length, file) == (size_t)length;
+        drive->file_size = length;
+    }
+    fclose(file);
+    return ok;
+}
+
 bool elk_disk_insert(int number, const char *path)
 {
     if (number < 0 || number >= ELK_DISK_DRIVES ||
@@ -612,24 +712,9 @@ bool elk_disk_insert(int number, const char *path)
     if (!flush(drive)) {
         return false;
     }
-    FILE *file = fopen(path, "r+b");
-    bool protect = !file;
-    if (!file) {
-        file = fopen(path, "rb");
-    }
-    if (!file) {
-        return false;
-    }
-    long length = fseek(file, 0, SEEK_END) == 0 ? ftell(file) : -1;
-    size_t size = length > 0 ? disk_capacity(file, path, length) : 0;
-    drive_t next = { .protect = protect, .head = drive->head };
-    bool ok = length > 0 && (size_t)length <= size && geometry(path, size, &next) &&
-              fseek(file, 0, SEEK_SET) == 0;
-    if (ok) {
-        next.image = ELK_SLOW_ALLOC(size);
-        ok = next.image && fread(next.image, 1, length, file) == (size_t)length;
-    }
-    fclose(file);
+    drive_t next = { .head = drive->head };
+    const char *ext = strrchr(path, '.');
+    bool ok = ext && (!strcasecmp(ext, ".uef") ? load_uef_disk(path, &next) : load_raw_disk(path, &next));
     if (!ok) {
         free(next.image);
         return false;
@@ -637,8 +722,6 @@ bool elk_disk_insert(int number, const char *path)
     if (selected() == number && (fdc.status & BUSY)) {
         finish(elk.cpu.cycles, RNF);
     }
-    next.size = size;
-    next.file_size = length;
     next.mounted = true;
     strcpy(next.path, path);
     free(drive->image);
@@ -677,6 +760,7 @@ void elk_disk_status(int number, elk_disk_status_t *out)
     out->head = drive->head;
     out->protect = drive->protect;
     out->write_error = drive->write_error;
+    out->dfs = drive->mounted && drive->sectors_per_track == DFS_SECTORS_PER_TRACK;
     out->reads = drive->reads;
     out->writes = drive->writes;
     out->motor = (elk.adfs || elk.cfg.dfs) && selected() == number && motor(elk.cpu.cycles);

@@ -59,7 +59,8 @@ static bool media_accepts(int drive, const char *path)
     }
     return drive == DRIVE_TAPE ? !strcasecmp(ext, ".uef") :
            !strcasecmp(ext, ".adf") || !strcasecmp(ext, ".ads") ||
-           !strcasecmp(ext, ".adm") || !strcasecmp(ext, ".adl") || !strcasecmp(ext, ".ssd");
+           !strcasecmp(ext, ".adm") || !strcasecmp(ext, ".adl") || !strcasecmp(ext, ".ssd") ||
+           !strcasecmp(ext, ".uef");
 }
 
 static bool media_insert(int drive, const char *path)
@@ -134,9 +135,12 @@ static uint32_t default_disk_size(int drive)
 
 static int expansion_for_disk(int drive)
 {
-    const char *path = takes_blank(drive) ? media_path(drive) : NULL;
-    const char *ext = path ? strrchr(path, '.') : NULL;
-    return ext ? (!strcasecmp(ext, ".ssd") ? DISK_DFS : DISK_ADFS) : DISK_NONE;
+    if (!takes_blank(drive) || !media_path(drive)) {
+        return DISK_NONE;
+    }
+    elk_disk_status_t disk;
+    elk_disk_status(drive - DRIVE_0, &disk);
+    return disk.dfs ? DISK_DFS : DISK_ADFS;
 }
 
 static const char *disk_offer(int drive)

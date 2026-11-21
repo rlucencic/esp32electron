@@ -46,7 +46,10 @@ check-plus1: $(BUILD)/elk_host
 check-dfs: $(BUILD)/elk_host
 	python3 check_dfs.py ./$(BUILD)/elk_host $(ROM) $(DFS)
 
+check-uef-disk: $(BUILD)/elk_host
+	python3 check_uef_disk.py ./$(BUILD)/elk_host $(ROM) $(ADFS) $(DFS)
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: run check check-plus1 check-plus3 check-dfs clean
+.PHONY: run check check-plus1 check-plus3 check-dfs check-uef-disk clean

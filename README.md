@@ -149,6 +149,12 @@ of side 0 followed by all of side 1. Use **New** to create an empty
 formatted disk or run `*EFORM` from the original Welcome disc to format
 a mounted image. [Acorn Plus 3 User Guide](https://chrisacorns.computinghistory.org.uk/docs/Acorn/Manuals/Acorn_Plus3UG.pdf)
 
+Some archive `.uef` files contain floppy disks. Mount those in **Drive 0**
+or **Drive 1**. Raw and gzip-compressed UEFs with standard ADFS or
+single-sided DFS disk data mount read-only. [UEF format specification](https://electrem.emuunlim.com/UEFSpecs.htm)
+
+After a rejected save in Acorn ADFS, use `*MOUNT` to reload the disk map.
+
 ### ACP 1770 DFS disks
 
 Supply `acpdfs.rom` in `roms/` before flashing or in `electron/roms/`
@@ -181,6 +187,7 @@ make -C components/electron/host check    # cassette regression checks (requires
 make -C components/electron/host check-plus1  # cartridge paging and ROM priority
 make -C components/electron/host check-plus3  # ADFS save, compact, reload and side selection
 make -C components/electron/host check-dfs    # DFS save, reload and format
+make -C components/electron/host check-uef-disk  # raw and gzip UEF floppy images
 ELK_TYPE='40:PRINT 2+2\n' ./components/electron/host/build/elk_host roms/os_basic.ic2 200 out.ppm
 ```
 

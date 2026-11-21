@@ -111,7 +111,7 @@ void elk_tape_status(elk_tape_status_t *status);
 typedef struct {
     size_t size;
     int tracks, sides, head;
-    bool protect, write_error, motor;
+    bool protect, write_error, motor, dfs;
     uint32_t reads, writes;
 } elk_disk_status_t;
 

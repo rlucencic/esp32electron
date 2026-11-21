@@ -78,7 +78,8 @@ blank disks. Mounted media names are remembered across restarts.
 | `components/electron/` | The machine, platform independent (`include/electron.h`) |
 | `components/electron/elk.c` | Set up, reset, BREAK, the frame loop, the 6502's bus and its timing |
 | `components/electron/ula.c` | The ULA's registers, interrupts, ROM paging |
-| `components/electron/tape.c` | UEF parsing, gzip input, bit timing and the ULA's cassette receiver |
+| `components/electron/tape.c` | UEF cassette chunks, bit timing and the ULA's cassette receiver |
+| `components/electron/uef.c` | Shared raw and gzip UEF reader with chunk validation |
 | `components/electron/plus3.c` | WD1770, drive latch, raw ADFS and DFS images and disk writeback |
 | `components/electron/plus1.c` | Raw ROM cartridge loading and mapping for SK1 and SK2 |
 | `components/electron/video.c` | The picture: line records, modes 0-6, three frames for the presenter |
@@ -192,6 +193,21 @@ blank disks. Mounted media names are remembered across restarts.
 
 ## Testing
 
+- **Original software and UEF disk media (2026-11-21).** Twelve additional
+  original tapes reached their menus or opening screens, including all
+  four Mini Office programs, Exile, Citadel and Magic Mushrooms. Seven
+  `.uef` files in the archive turned out to contain trimmed ADFS disks.
+  Mount them in a floppy drive. All seven booted via `*EXEC !BOOT` on the
+  host. The new `check-uef-disk` test covers raw and gzip UEFs containing
+  ADFS and DFS disk data, and rejection of disk-only UEFs in the tape drive.
+  Palace of Magic loaded its second stage and reached gameplay. A
+  synthetic two-sided ADFS UEF also loaded a program from the second side.
+  ViewSheet saved a spreadsheet to ADFS and reopened it in a fresh
+  host session with the value intact.
+  The MaTouch booted Bug Blaster from its UEF disk and loaded Mini Office
+  Graphics from cassette. The Tab5 booted Palace of Magic and switched
+  between ACP DFS and Acorn Plus 3 from the mounted UEF disk type.
+  Both boards rejected writes and preserved the original UEF bytes.
 - **ACP 1770 DFS (2026-11-21).** The original ACP DFS 2.20 ROM runs
   from SK1, with 4 KiB of workspace and single-density WD1770 transfers.
   It shares the floppy drive slots with the Acorn Plus 3. Setup and the
@@ -234,8 +250,8 @@ blank disks. Mounted media names are remembered across restarts.
   2 MHz timebase. The Fast leaders setting limits long carriers and gaps
   while preserving the data rate. On the host, Chuckie Egg reached its
   title after about 127 seconds in Real time and 115 with Fast leaders.
-  Snapper and Repton reached their menus. All 876 UEF files extracted from
-  the TOSEC archive supplied in Drive mounted on the host. Generated
+  Snapper and Repton reached their menus. All 869 cassette UEFs in the
+  supplied TOSEC archive mounted in the host tape drive. Generated
   tapes cover `LOAD`, `CHAIN`, `*RUN`, explicit bits and gzip validation
   in `make -C components/electron/host check`. The MaTouch and Tab5
   catalogued and ran a BASIC program from a gzip UEF uploaded through
