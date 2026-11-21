@@ -8,6 +8,7 @@ BUILD     := build
 CFLAGS    := -O2 -g -Wall -Wextra -Wno-unused-parameter -DM6502_HOST_HOOK -DELK_HOST_HOOK -DM6502_SLOW_PAGES -I$(ELK)/include -I$(ELK) \
              -I$(M6502)/include -I$(EMUDBG)/include
 ROM       ?= $(ROOT)/roms/os_basic.ic2
+ADFS      ?= $(ROOT)/roms/adfs.rom
 FRAMES    ?= 300
 
 ELK_SRCS  := $(wildcard $(ELK)/*.c)
@@ -35,7 +36,10 @@ $(BUILD)/%.o: $(EMUDBG)/%.c $(EMUDBG)/include/emudbg.h
 check: $(BUILD)/elk_host
 	python3 check_tape.py ./$(BUILD)/elk_host $(ROM)
 
+check-plus3: $(BUILD)/elk_host
+	python3 check_plus3.py ./$(BUILD)/elk_host $(ROM) $(ADFS)
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: run check clean
+.PHONY: run check check-plus3 clean

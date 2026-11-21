@@ -2,8 +2,8 @@
 
 An Acorn Electron (1983): a 6502A at 2 MHz (1 MHz to RAM and the ULA), 32
 KB RAM, the ULA (display, sound, cassette, keyboard, interrupts, ROM
-paging), BBC BASIC II and MOS 1.00 in a 32 KB ROM; an Acorn Plus 3 (ADFS, a
-WD1770, a 3.5" drive) to come. Both boards, as the QL. The plan: esp32emu's
+paging), BBC BASIC II and MOS 1.00 in a 32 KB ROM, and an Acorn Plus 3
+(ADFS and a WD1770 for 3.5" drives). Both boards, as the QL. The plan: esp32emu's
 CLAUDE.md, "To do" (the Electron's entry). **What's next: `TODO.md`**.
 
 The board side (tasks, LCD, touch, SD, WiFi, BLE, setup screen, web page,
@@ -36,11 +36,12 @@ bash -c '. ~/.espressif/tools/activate_idf_v5.5.6.sh >/dev/null 2>&1; idf.py bui
   file of the same name in the SD card's `electron/roms` overrides one
   (`roms/README.md`: where they come from). The boards are shared with the
   other projects: after another one, a full `flash`.
-- NVS: namespace `elk` (`plus3`, `fast_tape`), the tape in the drive `elkdisks`. mDNS
+- NVS: namespace `elk` (`plus3`, `fast_tape`), mounted tapes and disks in `elkdisks`. mDNS
   `acorn-electron.local`.
 - The SD card's `electron/` folder: UEF tapes (`.uef`, gzip-compressed
   ones too, the usual kind: TOSEC's are), listed by the web page and the
-  setup screen's Tapes page. Playback uses the ULA cassette receiver.
+  setup screen's Media page. Playback uses the ULA cassette receiver.
+  The same folder holds writable raw ADFS disks for the two Plus 3 drives.
 - The MaTouch: its UART port, not native USB (the speaker's lines); opening
   that port resets the board.
 - `../esp32emu/tools/emu_console.py PORT log N | lcd F.png | send "cmd" |
@@ -57,11 +58,11 @@ The web page (esp32emu's, `http://acorn-electron.local`): the machine card
 (`status()`: the system, the ROM at $8000 now, the mode (size, colours,
 screen memory, start, whether the CPU waits), the tone's pitch, CAPS LK and
 the keys' places, the cassette motor, the expansions), the drives card (the
-Tape drive: its tape, playback position, received bytes and motor light), the
-board card, and the `.uef` files in `electron/` with upload (ZIP files
-unpacked in the browser), download, delete and Insert into Tape. The Tape
-drive (`main.c`'s `disks`, the setup screen's Tapes button too) takes a
-UEF or gzip file (else 422). Its name is remembered across restarts.
+Tape drive and two floppy drives), the board card, and the media files in
+`electron/` with upload (ZIP files unpacked in the browser), download,
+delete and insert. The Tape drive takes UEF, including gzip-compressed
+images. The floppy drives take raw ADFS images and can create formatted
+blank disks. Mounted media names are remembered across restarts.
 
 ## Layout
 
@@ -75,6 +76,7 @@ UEF or gzip file (else 422). Its name is remembered across restarts.
 | `components/electron/elk.c` | Set up, reset, BREAK, the frame loop, the 6502's bus and its timing |
 | `components/electron/ula.c` | The ULA's registers, interrupts, ROM paging |
 | `components/electron/tape.c` | UEF parsing, gzip input, bit timing and the ULA's cassette receiver |
+| `components/electron/plus3.c` | WD1770, drive latch, raw ADFS images and disk writeback |
 | `components/electron/video.c` | The picture: line records, modes 0-6, three frames for the presenter |
 | `components/electron/sound.c` | The square wave, two samples a line into the sound ring |
 | `components/electron/keyboard.c` | The keyboard matrix as the CPU reads it |
@@ -186,6 +188,18 @@ UEF or gzip file (else 422). Its name is remembered across restarts.
 
 ## Testing
 
+- **Acorn Plus 3 (2026-11-21).** The original ADFS ROM uses page 4 and
+  polls the WD1770 at $FCC4–$FCC7. The latch at $FCC0 selects the drive,
+  side, density and controller reset. Setup enables the expansion and
+  the media browser can create formatted S, M and L disks. The host
+  catalogued the original Welcome disc and ran its `*EFORM` utility to
+  format and verify all three geometries. The host's `check-plus3` target
+  checks saving, moving a file with `*COMPACT`, reloading after remount,
+  and second-side writes in both raw image layouts.
+  The MaTouch and Tab5 catalogued the Welcome disc, saved a BASIC program
+  to a new disk, and reloaded and ran it after ejecting and remounting
+  (320 KiB on MaTouch, 640 KiB on Tab5). The MaTouch uses esp32emu's
+  reserved SD DMA buffer and PSRAM web transfer buffers.
 - **UEF cassette playback (2026-11-21).** The receiver uses $FE04, the
   motor and input mode in $FE07, and the RxFull and high-tone interrupts.
   The player runs at nominal 1200 baud with a bit clock in the Electron's
@@ -205,7 +219,9 @@ UEF or gzip file (else 422). Its name is remembered across restarts.
   `ELK_WATCH` (a CPU write to an address: the instructions before),
   `ELK_ZP` (zero page with the registers), `ELK_DASM`, `ELK_DUMP`,
   `ELK_KEYS`, `ELK_TYPE`, `ELK_WAV`, `ELK_ADFS`, `ELK_TAPE`, and
-  `ELK_TAPE_FAST`.
+  `ELK_TAPE_FAST`. For the Plus 3, set `ELK_ADFS` and mount raw images
+  with `ELK_DISK0` and `ELK_DISK1`. `ELK_NEWDISK` creates a formatted
+  ADFS M image and mounts it in drive 0.
 
 ## Working with the user
 

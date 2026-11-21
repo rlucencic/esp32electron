@@ -18,12 +18,12 @@ static uint8_t s_ff_page[256];          /* nothing there: $FF */
 
 /* ---- Memory map ---- */
 
-/* $8000-$BFFF for the ROM page in $FE05: 8-9 the keyboard (read through
- * the bus callback), 10-11 BASIC, 4 the Plus 3's ADFS, the rest empty
+/* The ULA supplies the keyboard and BASIC. Otherwise the Plus 3 may
+ * drive the data bus through its own ROM select latch.
  */
 void elk_map_rom(void)
 {
-    const uint8_t *rom = NULL;
+    const uint8_t *rom = elk.adfs_selected ? elk.adfs : NULL;
     switch (elk.rom_page) {
     case 8: case 9:
         for (int p = 0x80; p < 0xC0; p++) {
@@ -32,9 +32,6 @@ void elk_map_rom(void)
         return;
     case 10: case 11:
         rom = elk.basic;
-        break;
-    case 4:
-        rom = elk.adfs;
         break;
     default:
         break;
@@ -130,7 +127,7 @@ static uint8_t bus_read(void *ctx, uint16_t a)
     }
     if (a >= 0xFC00 && a < 0xFE00) {
         wait_io(c);
-        return 0xFF;                    /* the expansion bus: nothing yet */
+        return elk.adfs && (a & 0xFFF0) == 0xFCC0 ? elk_plus3_read(a) : 0xFF;
     }
     return elk.mos[a - 0xC000];
 }
@@ -160,6 +157,9 @@ static void bus_write(void *ctx, uint16_t a, uint8_t v)
     }
     if (a >= 0xFC00 && a < 0xFE00) {
         wait_io(c);
+        if (elk.adfs && (a & 0xFFF0) == 0xFCC0) {
+            elk_plus3_write(a, v);
+        }
     }
     /* ROM: nothing */
 }
@@ -177,7 +177,7 @@ bool elk_init(const elk_config_t *config)
     elk.mos = config->os_basic + 0x4000;
     elk.adfs = config->adfs;
     memset(s_ff_page, 0xFF, sizeof(s_ff_page));
-    if (!elk_video_init()) {
+    if (!elk_video_init() || (elk.adfs && !elk_plus3_init())) {
         return false;
     }
     const m6502_bus_t bus = { bus_read, bus_write, NULL, NULL };
@@ -194,6 +194,7 @@ void elk_reset(void)
     elk.frame_start = elk.cpu.cycles;
     elk.field_ticks = 312 * ELK_LINE_TICKS;
     elk_ula_reset(true);
+    elk_plus3_reset();
     map_memory();
     m6502_reset(&elk.cpu);
 }
@@ -224,6 +225,7 @@ static void run_to(uint64_t t)
     } else {
         if (was_down) {
             elk_ula_reset(false);
+            elk_plus3_reset();
             map_memory();
             m6502_reset(&elk.cpu);
         }
@@ -272,6 +274,9 @@ void elk_run_frame(void)
         run_to(start + ELK_LINE_TICKS);
         elk_sound_line();
     }
+    if (elk.adfs) {
+        elk_plus3_update();
+    }
     elk.frame_start += elk.field_ticks;
     elk.frames++;
     elk_video_frame_end();
@@ -288,7 +293,7 @@ void elk_get_status(elk_status_t *s)
     s->s = elk.cpu.s;
     s->p = elk.cpu.p;
     s->mode = elk.mode;
-    s->rom_page = elk.rom_page;
+    s->rom_page = elk.adfs_selected && (elk.rom_page & 0x0C) != 8 ? 4 : elk.rom_page;
     s->caps_lock = (elk.control & 0x80) != 0;
     s->motor = (elk.control & 0x40) != 0;
     s->comms = (elk.control >> 1) & 3;

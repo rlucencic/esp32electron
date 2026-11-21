@@ -2,6 +2,7 @@
 idf_component_register(SRCS "elk.c"
                             "ula.c"
                             "tape.c"
+                            "plus3.c"
                             "video.c"
                             "sound.c"
                             "keyboard.c"

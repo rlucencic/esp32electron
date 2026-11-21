@@ -10,7 +10,7 @@ settings_t settings;
 
 void settings_load(void)
 {
-    settings.plus3 = 1;
+    settings.plus3 = 0;
     settings.fast_tape = 0;
 
     nvs_handle_t h;

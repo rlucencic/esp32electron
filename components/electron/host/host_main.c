@@ -5,6 +5,9 @@
  *
  * Environment:
  *   ELK_ADFS=<rom>          a Plus 3 with that ADFS ROM
+ *   ELK_DISK0=<path>        an ADFS disk in drive 0 (writes persist)
+ *   ELK_DISK1=<path>        an ADFS disk in drive 1
+ *   ELK_NEWDISK=<path>      create a 320 KiB disk and mount it in drive 0
  *   ELK_LOG=<n>             the CPU's state every n frames
  *   ELK_SHOTS=<n>           a picture every n frames (out-NNNNN.ppm)
  *   ELK_STOP=<pc>[:<frame>] stop at pc (hex), from that frame on: the
@@ -226,6 +229,19 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    const char *new_disk = getenv("ELK_NEWDISK");
+    if (new_disk && !elk_disk_create(new_disk, ELK_ADFS_MEDIUM)) {
+        fprintf(stderr, "%s: could not create an ADFS disk\n", new_disk);
+        return 1;
+    }
+    const char *images[] = { new_disk ? new_disk : getenv("ELK_DISK0"), getenv("ELK_DISK1") };
+    for (int drive = 0; drive < ELK_DISK_DRIVES; drive++) {
+        if (images[drive] && !elk_disk_insert(drive, images[drive])) {
+            fprintf(stderr, "%s: invalid or unreadable ADFS disk\n", images[drive]);
+            return 1;
+        }
+    }
+
     const char *tape = getenv("ELK_TAPE");
     if (tape && !elk_tape_insert(tape)) {
         fprintf(stderr, "%s: invalid or unreadable UEF image\n", tape);
@@ -298,6 +314,9 @@ int main(int argc, char **argv)
         }
         d = strchr(d, ';');
         d = d ? d + 1 : NULL;
+    }
+    if (!elk_disks_flush()) {
+        return 1;
     }
     printf("after %u frames: PC %04X\n", frames, elk.cpu.pc);
     write_ppm(out);

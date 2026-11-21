@@ -87,6 +87,36 @@ void elk_tape_rewind(void);
 void elk_tape_fast(bool fast);
 void elk_tape_status(elk_tape_status_t *status);
 
+/* ---- Plus 3 ---- */
+
+#define ELK_DISK_DRIVES 2
+#define ELK_ADFS_SMALL  (160u * 1024)
+#define ELK_ADFS_MEDIUM (320u * 1024)
+#define ELK_ADFS_LARGE  (640u * 1024)
+
+typedef struct {
+    size_t size;
+    int tracks, sides, head;
+    bool protect, write_error, motor;
+    uint32_t reads, writes;
+} elk_disk_status_t;
+
+typedef struct {
+    bool enabled;
+    int drive, side;
+    uint8_t track, sector, command, status;
+} elk_plus3_status_t;
+
+/* Mount, eject and flush with the core paused. Disk numbers start at zero. */
+bool elk_disk_insert(int drive, const char *path);
+void elk_disk_eject(int drive);
+const char *elk_disk_path(int drive);
+bool elk_disk_create(const char *path, uint32_t size);
+bool elk_disks_dirty(void);
+bool elk_disks_flush(void);
+void elk_disk_status(int drive, elk_disk_status_t *status);
+void elk_plus3_status(elk_plus3_status_t *status);
+
 /* ---- Status ---- */
 typedef struct {
     uint32_t frames;

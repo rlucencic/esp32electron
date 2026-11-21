@@ -65,7 +65,8 @@ typedef struct {
 
     /* The ULA */
     uint8_t int_status, int_enable;
-    uint8_t rom_page;                   /* $FE05 bits 0-3 */
+    uint8_t rom_page;                   /* the ULA latch, $FE05 bits 0-3 */
+    bool adfs_selected;                 /* the separate Plus 3 ROM latch */
     uint16_t screen_start;              /* $FE02/$FE03: the next frame's */
     uint8_t counter;                    /* $FE06 */
     uint8_t control;                    /* $FE07 */
@@ -132,3 +133,10 @@ extern uint64_t elk_tape_event;
 void elk_tape_advance(uint64_t now);
 void elk_tape_control(void);
 uint8_t elk_tape_data(void);
+
+/* plus3.c */
+bool elk_plus3_init(void);
+void elk_plus3_reset(void);
+void elk_plus3_update(void);
+uint8_t elk_plus3_read(uint16_t address);
+void elk_plus3_write(uint16_t address, uint8_t value);

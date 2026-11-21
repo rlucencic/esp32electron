@@ -16,8 +16,8 @@
 </p>
 
 <p align="center">
-  <b>Early development:</b> the MOS, BBC BASIC, display, sound, keyboard and UEF cassette
-  playback are implemented. The Plus 3 floppy expansion comes next.
+  <b>Early development:</b> the MOS, BBC BASIC, display, sound, keyboard, UEF cassette
+  playback and Acorn Plus 3 ADFS floppy disks are implemented.
 </p>
 
 <p align="center">
@@ -89,8 +89,11 @@ core this one shares with the Commodores and the Atari.
   at tape speed. Use **Real time** for software that depends on tape timing.
   Tape images are read-only.
 
-**Next:** the Acorn Plus 3 (ADFS floppy disks), more original software and
-ROM cartridges.
+- Acorn Plus 3 with the original ADFS ROM, WD1770 controller and two
+  writable floppy drives. The media browser can create formatted ADFS S,
+  M and L disks.
+
+**Next:** more original software, Plus 1 ROM cartridges and ACP's 1770 DFS.
 
 ## Hardware
 
@@ -124,6 +127,19 @@ cloned next to this repository.
    for a BASIC loader or `*RUN` with the program name for machine code.
    Press Escape to stop `*CAT`. Eject and reinsert a tape to rewind it,
    or send `W` on the serial console.
+6. To use disks, set **Plus 3** to **On** in setup or accept the offer
+   after inserting an ADFS image. The expansion needs `adfs.rom` from
+   flash or from the SD card's `electron/roms/` folder. Mount an image in
+   **Drive 0** or **Drive 1** through **Media** or the web interface,
+   then enter `*MOUNT 0` or `*MOUNT 1` and `*CAT`. Use `*TAPE` to
+   switch back to cassette commands while the Plus 3 is enabled.
+
+The Plus 3 reads and writes raw ADFS S (160 KiB), M (320 KiB) and L
+(640 KiB) images. Use `.adf` for S and M (`.ads` and `.adm` also work)
+and `.adl` for track-interleaved L images. A 640 KiB `.adf` has all
+of side 0 followed by all of side 1. Use **New** to create an empty
+formatted disk or run `*EFORM` from the original Welcome disc to format
+a mounted image. [Acorn Plus 3 User Guide](https://chrisacorns.computinghistory.org.uk/docs/Acorn/Manuals/Acorn_Plus3UG.pdf)
 
 ## Development
 
@@ -133,6 +149,7 @@ The machine (`components/electron`) is platform independent;
 ```sh
 make -C components/electron/host run      # 300 frames: the BASIC prompt in build/screen.ppm
 make -C components/electron/host check    # cassette regression checks (requires zlib)
+make -C components/electron/host check-plus3  # ADFS save, compact, reload and side selection
 ELK_TYPE='40:PRINT 2+2\n' ./components/electron/host/build/elk_host roms/os_basic.ic2 200 out.ppm
 ```
 

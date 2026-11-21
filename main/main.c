@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_heap_caps.h"
@@ -37,15 +38,34 @@ static void reserve_memory(void)
 
 static void storage(bool sd_card)
 {
-    emu_set_drive_info(sd_card ? "Tapes (.UEF) from the SD card" : "No SD card: no tapes");
+    emu_set_drive_info(sd_card ? "UEF tapes and ADFS disks on the SD card" : "No SD card: no media");
 }
 
-/* ---- The tape drive ---- */
+/* ---- Tape and floppy media ---- */
+
+enum { DRIVE_TAPE, DRIVE_0, DRIVE_1, DRIVE_COUNT };
 
 static char s_tape[160];
 
-static bool tape_insert(int drive, const char *path)
+static bool media_accepts(int drive, const char *path)
 {
+    const char *ext = strrchr(path, '.');
+    if (!ext) {
+        return false;
+    }
+    return drive == DRIVE_TAPE ? !strcasecmp(ext, ".uef") :
+           !strcasecmp(ext, ".adf") || !strcasecmp(ext, ".ads") ||
+           !strcasecmp(ext, ".adm") || !strcasecmp(ext, ".adl");
+}
+
+static bool media_insert(int drive, const char *path)
+{
+    if (!media_accepts(drive, path)) {
+        return false;
+    }
+    if (drive != DRIVE_TAPE) {
+        return elk_disk_insert(drive - DRIVE_0, path);
+    }
     if (strlen(path) >= sizeof(s_tape) || !elk_tape_insert(path)) {
         ESP_LOGW(TAG, "%s: invalid or unreadable UEF", path);
         return false;
@@ -54,46 +74,109 @@ static bool tape_insert(int drive, const char *path)
     return true;
 }
 
-static void tape_eject(int drive)
+static void media_eject(int drive)
 {
-    elk_tape_eject();
-    s_tape[0] = 0;
+    if (drive == DRIVE_TAPE) {
+        elk_tape_eject();
+        s_tape[0] = 0;
+    } else {
+        elk_disk_eject(drive - DRIVE_0);
+    }
 }
 
-static const char *tape_path(int drive)
+static const char *media_path(int drive)
 {
-    return s_tape[0] ? s_tape : NULL;
+    if (drive == DRIVE_TAPE) {
+        return s_tape[0] ? s_tape : NULL;
+    }
+    return elk_disk_path(drive - DRIVE_0);
 }
 
-static bool tape_write_protected(int drive)
+static bool media_write_protected(int drive)
 {
-    return true;
+    if (drive == DRIVE_TAPE) {
+        return true;
+    }
+    elk_disk_status_t disk;
+    elk_disk_status(drive - DRIVE_0, &disk);
+    return disk.protect;
 }
 
-static const char *const extensions[] = { ".uef", NULL };
-static const char *const drive_names[] = { "Tape" };
+static bool takes_blank(int drive)
+{
+    return drive == DRIVE_0 || drive == DRIVE_1;
+}
+
+static const char *new_extension(uint32_t size)
+{
+    return size == ELK_ADFS_LARGE ? ".adl" : ".adf";
+}
+
+static const char *disk_offer(int drive)
+{
+    if (drive != DRIVE_TAPE && !settings.plus3 && media_path(drive)) {
+        return "Enable the Plus 3 and restart to use this ADFS disk.";
+    }
+    return NULL;
+}
+
+static void enable_plus3(int drive)
+{
+    settings.plus3 = 1;
+    settings_save();
+}
+
+static const char *const extensions[] = { ".uef", ".adf", ".ads", ".adm", ".adl", NULL };
+static const char *const drive_names[] = { "Tape", "Drive 0", "Drive 1" };
+static const disks_size_t sizes[] = {
+    { ELK_ADFS_MEDIUM, "320 KiB ADFS M (.ADF)" },
+    { ELK_ADFS_SMALL, "160 KiB ADFS S (.ADF)" },
+    { ELK_ADFS_LARGE, "640 KiB ADFS L (.ADL)" },
+};
 
 static const disks_config_t disks = {
     .folder = "electron",
     .extensions = extensions,
-    .description = "Tapes (.UEF)",
-    .title = "Tapes",
-    .button = "Tapes",
+    .description = "UEF tapes and ADFS disks",
+    .title = "Tapes and disks",
+    .button = "Media",
     .nvs_namespace = "elkdisks",
-    .drives = 1,
+    .drives = DRIVE_COUNT,
     .drive_names = drive_names,
+    .new_prefix = "ADFS",
+    .new_extension = ".adf",
+    .sizes = sizes,
+    .size_count = sizeof(sizes) / sizeof(sizes[0]),
     .max_upload = 4 * 1024 * 1024,
-    .insert = tape_insert,
-    .eject = tape_eject,
-    .path = tape_path,
-    .write_protected = tape_write_protected,
+    .insert = media_insert,
+    .eject = media_eject,
+    .path = media_path,
+    .write_protected = media_write_protected,
+    .create = elk_disk_create,
+    .accepts = media_accepts,
+    .takes_blank = takes_blank,
+    .extension_for = new_extension,
+    .offer = disk_offer,
+    .take_offer = enable_plus3,
 };
+
+static void flush_disks(void *arg)
+{
+    elk_disks_flush();
+}
+
+static void every_second(void)
+{
+    if (elk_disks_dirty()) {
+        emu_paused(flush_disks, NULL);
+    }
+}
 
 /* ---- Starting ---- */
 
 static bool start(void)
 {
-    if (s_os_basic == NULL || s_adfs == NULL || s_cfg.ram == NULL) {
+    if (s_os_basic == NULL || s_cfg.ram == NULL || (settings.plus3 && s_adfs == NULL)) {
         emu_set_message("Not enough memory: see the log.");
         return false;
     }
@@ -105,7 +188,14 @@ static bool start(void)
         return false;
     }
     s_cfg.os_basic = s_os_basic;
-    s_cfg.adfs = NULL;                  /* (the Plus 3 to come) */
+    s_cfg.adfs = NULL;
+    if (settings.plus3) {
+        if (!rom_store_load(ROM_ADFS, s_adfs)) {
+            emu_set_message("Plus 3 needs adfs.rom. Add the ROM or switch Plus 3 off.");
+            return false;
+        }
+        s_cfg.adfs = s_adfs;
+    }
     if (!elk_init(&s_cfg)) {
         emu_set_message("The Electron could not be set up: see the log.");
         return false;
@@ -136,7 +226,21 @@ static void set_tape_mode(int mode)
     elk_tape_fast(settings.fast_tape);
 }
 
+static const char *const plus3_modes[] = { "Off", "On", "" };
+
+static int plus3_mode(void)
+{
+    return settings.plus3;
+}
+
+static void set_plus3(int mode)
+{
+    settings.plus3 = mode != 0;
+    settings_save();
+}
+
 static const emu_choice_t choices[] = {
+    { "Plus 3", plus3_modes, plus3_mode, set_plus3, false },
     { "Tape speed", tape_modes, tape_mode, set_tape_mode, true },
 };
 
@@ -153,6 +257,16 @@ static void status(emu_json_t *j, int section)
         snprintf(detail, sizeof(detail), "UEF position %zu of %zu bytes", tape.position, tape.size);
         emu_json_drive(j, drive_names[0], disks_name(0), true, s.motor, tape.received, 0,
                        tape.size ? detail : NULL);
+        for (int drive = 0; drive < ELK_DISK_DRIVES; drive++) {
+            elk_disk_status_t disk;
+            elk_disk_status(drive, &disk);
+            snprintf(detail, sizeof(detail), "%zu KiB, %d tracks, %d side%s%s", disk.size / 1024,
+                     disk.tracks, disk.sides, disk.sides == 1 ? "" : "s",
+                     disk.write_error ? "; write pending after error" : "");
+            emu_json_drive(j, drive_names[drive + DRIVE_0], disks_name(drive + DRIVE_0),
+                           disk.protect, disk.motor, disk.reads, disk.writes,
+                           disk.size || disk.write_error ? detail : NULL);
+        }
         return;
     }
     static const struct {
@@ -168,8 +282,11 @@ static void status(emu_json_t *j, int section)
     elk_status_t s;
     elk_get_status(&s);
     emu_json_row(j, "System", "Acorn Electron: a 6502A at 2 MHz (1 MHz to RAM), 32 KB RAM, the ULA");
+    elk_plus3_status_t plus3;
+    elk_plus3_status(&plus3);
     const char *page = s.rom_page == 8 || s.rom_page == 9 ? "the keyboard" :
-                       s.rom_page == 10 || s.rom_page == 11 ? "BASIC" : NULL;
+                       s.rom_page == 10 || s.rom_page == 11 ? "BASIC" :
+                       s.rom_page == 4 && plus3.enabled ? "ADFS" : NULL;
     if (page) {
         snprintf(text, sizeof(text), "MOS 1.00, BBC BASIC II; at &amp;8000 now: %s", page);
     } else {
@@ -192,7 +309,13 @@ static void status(emu_json_t *j, int section)
     snprintf(text, sizeof(text), "Motor %s%s, %s", s.motor ? "on" : "off",
              tape.playing ? " (playing)" : "", settings.fast_tape ? "fast leaders" : "real time");
     emu_json_row(j, "Cassette", text);
-    emu_json_row(j, "Expansions", "None (the Plus 3's floppy disks to come)");
+    if (plus3.enabled) {
+        snprintf(text, sizeof(text), "Acorn Plus 3, ADFS ROM in slot 4, WD1770 command &amp;%02X status &amp;%02X, "
+                 "track %u sector %u side %d", plus3.command, plus3.status, plus3.track, plus3.sector, plus3.side);
+        emu_json_row(j, "Expansions", text);
+    } else {
+        emu_json_row(j, "Expansions", "Plus 3 off");
+    }
 }
 
 /* ---- Console ---- */
@@ -289,6 +412,7 @@ static const emu_machine_t machine = {
     .hid_key = keymap_hid_key,
     .disks = &disks,
     .status = status,
+    .every_second = every_second,
     .console_info = console_info,
     .console_command = console_command,
 };

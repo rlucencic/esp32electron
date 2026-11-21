@@ -907,6 +907,8 @@ puts it in slot 6, its own choice.)
   CLK `AcornADF::get_file_offset_for_position`], while a dump in ADFS
   logical order would hold side 0 then side 1; CLK's comment notes that
   emulators meet both and "the side order can't be reliably autodetected".
+  esp32electron uses `.adl` for interleaved images and 640 KiB `.adf`
+  for images in logical sector order.
 - Images used by emulators [MAME `acorn_dsk.cpp` `acorn_adfs_old_format`]:
   `.ads` 160K (40 tracks, 1 side), `.adm` 320K (80, 1 side), `.adl` 640K
   (80, 2 sides, tracks interleaved in the file: T0S0, T0S1, T1S0 ...),
