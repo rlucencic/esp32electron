@@ -35,7 +35,7 @@ void elk_ula_reset(bool power_on)
 {
     elk.control = 0;
     elk_tape_control();
-    elk.int_status = power_on ? INT_POWER_ON : (elk.int_status & INT_POWER_ON);
+    elk.int_status = INT_TX_EMPTY | (power_on ? INT_POWER_ON : (elk.int_status & INT_POWER_ON));
     elk.int_enable = 0;
     elk.external_page = 10;
     elk.rom_page = 10;                  /* BASIC (the MOS selects it anyway) */
@@ -92,8 +92,7 @@ void elk_ula_write(uint16_t a, uint8_t v)
         set_start(((v & 0x3F) << 9) | (elk.screen_start & 0x01C0));
         break;
     case 0x4:
-        elk.int_status &= ~INT_TX_EMPTY;
-        elk_ula_update_irq();
+        elk_tape_write(v);
         break;
     case 0x5: {
         uint8_t previous_page = elk.rom_page;

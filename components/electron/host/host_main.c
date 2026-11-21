@@ -20,6 +20,7 @@
  *   ELK_BREAK=<frame>       BREAK pressed for two frames
  *   ELK_TYPE=<frame>:<text>[|...]  type text from that frame (\n is RETURN)
  *   ELK_TAPE=<file.uef>     mount a raw or gzip-compressed UEF image
+ *   ELK_NEWTAPE=<file.rec.uef>  create and mount a blank writable cassette
  *   ELK_TAPE_FAST=1         shorten carriers and gaps
  *   ELK_WAV=<file>          the sound
  *   ELK_DUMP=<addr>:<len>[;...]  memory in hex at the end
@@ -258,7 +259,14 @@ int main(int argc, char **argv)
         }
     }
 
-    const char *tape = getenv("ELK_TAPE");
+    const char *tape = getenv("ELK_NEWTAPE");
+    if (tape && !elk_tape_create(tape)) {
+        fprintf(stderr, "%s: could not create a blank cassette\n", tape);
+        return 1;
+    }
+    if (!tape) {
+        tape = getenv("ELK_TAPE");
+    }
     if (tape && !elk_tape_insert(tape)) {
         fprintf(stderr, "%s: invalid or unreadable UEF image\n", tape);
         return 1;
@@ -331,7 +339,7 @@ int main(int argc, char **argv)
         d = strchr(d, ';');
         d = d ? d + 1 : NULL;
     }
-    if (!elk_disks_flush()) {
+    if (!elk_tape_flush() || !elk_disks_flush()) {
         return 1;
     }
     printf("after %u frames: PC %04X\n", frames, elk.cpu.pc);

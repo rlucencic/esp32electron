@@ -90,10 +90,14 @@ int elk_audio_pending(void);
 typedef struct {
     size_t size, position;              /* uncompressed UEF bytes */
     uint32_t received;
-    bool playing;
+    uint32_t recorded;
+    bool playing, recording, writable, write_error;
 } elk_tape_status_t;
 
 bool elk_tape_insert(const char *path);
+bool elk_tape_create(const char *path);
+bool elk_tape_dirty(void);
+bool elk_tape_flush(void);
 void elk_tape_eject(void);
 void elk_tape_rewind(void);
 void elk_tape_fast(bool fast);

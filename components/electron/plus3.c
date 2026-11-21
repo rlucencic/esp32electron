@@ -609,7 +609,7 @@ static size_t disk_capacity(FILE *file, const char *path, size_t length)
 static bool load_uef_disk(const char *path, drive_t *drive)
 {
     size_t length;
-    uint8_t *uef = uef_load(path, &length);
+    uint8_t *uef = uef_load(path, &length, NULL);
     if (!uef) {
         return false;
     }

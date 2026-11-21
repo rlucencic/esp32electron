@@ -11,8 +11,6 @@
 #include "elk_internal.h"
 #include "uef.h"
 
-#define MAX_IMAGE (4u * 1024 * 1024)
-
 static bool inflate_raw(const uint8_t *in, size_t size, uint8_t *out, size_t length)
 {
 #ifdef ESP_PLATFORM
@@ -80,7 +78,7 @@ static uint8_t *gunzip(const uint8_t *in, size_t *length)
         start += 2;
     }
     size_t size = uef_le32(in + end + 4);
-    if (start >= end || size < UEF_HEADER || size > MAX_IMAGE) {
+    if (start >= end || size < UEF_HEADER || size > UEF_MAX_SIZE) {
         return NULL;
     }
     uint8_t *out = ELK_SLOW_ALLOC(size);
@@ -113,19 +111,20 @@ static bool valid_uef(const uint8_t *image, size_t size)
     return true;
 }
 
-uint8_t *uef_load(const char *path, size_t *image_size)
+uint8_t *uef_load(const char *path, size_t *image_size, bool *compressed)
 {
     FILE *file = fopen(path, "rb");
     if (!file) {
         return NULL;
     }
     long size = fseek(file, 0, SEEK_END) ? -1 : ftell(file);
-    uint8_t *image = size >= UEF_HEADER && size <= MAX_IMAGE && !fseek(file, 0, SEEK_SET)
+    uint8_t *image = size >= UEF_HEADER && size <= UEF_MAX_SIZE && !fseek(file, 0, SEEK_SET)
                      ? ELK_SLOW_ALLOC(size) : NULL;
     bool ok = image && fread(image, 1, size, file) == (size_t)size;
     fclose(file);
     size_t length = ok ? size : 0;
-    if (ok && image[0] == 0x1F && image[1] == 0x8B) {
+    bool gzip = ok && image[0] == 0x1F && image[1] == 0x8B;
+    if (gzip) {
         uint8_t *raw = gunzip(image, &length);
         free(image);
         image = raw;
@@ -135,5 +134,8 @@ uint8_t *uef_load(const char *path, size_t *image_size)
         return NULL;
     }
     *image_size = length;
+    if (compressed) {
+        *compressed = gzip;
+    }
     return image;
 }

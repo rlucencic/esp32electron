@@ -1,17 +1,21 @@
-/* UEF input and the ULA's serial receiver. Time is in 2 MHz ticks. */
+/* UEF cassette playback and recording. Time is in 2 MHz ticks. */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "elk_internal.h"
 #include "uef.h"
 
 #define NO_EVENT UINT64_MAX
+#define TX_BIT_TICKS ((ELK_CPU_HZ + 600) / 1200)
 
 enum { SILENCE = -1, END_OF_TAPE = -2 };
 
 typedef struct {
     uint8_t *image;
-    size_t size, offset;
+    size_t size, capacity, persisted, offset;
+    char path[192];
     const uint8_t *chunk;
     uint32_t length, index;
     unsigned id, baud;
@@ -20,10 +24,18 @@ typedef struct {
     uint8_t shift, data;
     int symbol;
     uint32_t ticks;
-    bool fast;
+    uint32_t recorded;
+    bool fast, mounted, writable, write_error, full;
 } tape_t;
 
 static tape_t tape;
+static uint64_t rx_event = NO_EVENT;
+static struct {
+    uint64_t event, start, end, last_end;
+    size_t data_offset;
+    uint8_t value;
+    bool active, new_session;
+} tx = { .event = NO_EVENT };
 uint64_t elk_tape_event = NO_EVENT;
 
 static float le_float(const uint8_t *p)
@@ -177,7 +189,7 @@ static void schedule(uint64_t now)
             return;
         }
     }
-    elk_tape_event = now + tape.ticks;
+    rx_event = now + tape.ticks;
 }
 
 static void receive_symbol(int symbol)
@@ -212,32 +224,149 @@ static void receive_symbol(int symbol)
     }
 }
 
+static void publish_event(void)
+{
+    elk_tape_event = rx_event < tx.event ? rx_event : tx.event;
+    m6502_lower_until(&elk.cpu, elk_tape_event);
+}
+
+static bool reserve(size_t needed)
+{
+    if (needed <= tape.capacity) {
+        return true;
+    }
+    if (needed > UEF_MAX_SIZE) {
+        return false;
+    }
+    size_t capacity = tape.capacity < 4096 ? 4096 : tape.capacity * 2;
+    if (capacity < needed) {
+        capacity = needed;
+    }
+    if (capacity > UEF_MAX_SIZE) {
+        capacity = UEF_MAX_SIZE;
+    }
+    uint8_t *image = ELK_SLOW_ALLOC(capacity);
+    if (!image) {
+        return false;
+    }
+    memcpy(image, tape.image, tape.size);
+    if (tape.chunk) {
+        tape.chunk = image + (tape.chunk - tape.image);
+    }
+    free(tape.image);
+    tape.image = image;
+    tape.capacity = capacity;
+    return true;
+}
+
+static void put32(uint8_t *p, uint32_t value)
+{
+    for (unsigned i = 0; i < 4; i++) {
+        *p++ = value >> (i * 8);
+    }
+}
+
+static void append_tone(uint8_t kind, unsigned count)
+{
+    uint8_t chunk[] = { kind, 1, 2, 0, 0, 0, count & 255, count >> 8 };
+    memcpy(tape.image + tape.size, chunk, sizeof(chunk));
+    tape.size += sizeof(chunk);
+}
+
+static void record_byte(void)
+{
+    if (!tape.mounted || !tape.writable || tape.full) {
+        return;
+    }
+    uint64_t gap = tx.start >= tx.last_end ? (tx.start - tx.last_end) / TX_BIT_TICKS : 0;
+    bool leader = !tx.data_offset || gap >= 10;
+    if (leader && gap < 32) {
+        gap = 32;
+    }
+    if (gap > 32767) {
+        gap = 32767;
+    }
+    size_t extra = (leader ? 8 + UEF_CHUNK_HEADER : 0) + (tx.new_session && tape.size > UEF_HEADER ? 8 : 0);
+    if (!reserve(tape.size + extra + 1)) {
+        tape.full = true;
+        return;
+    }
+    if (tx.new_session && tape.size > UEF_HEADER) {
+        append_tone(0x12, 600);       /* separate successive recordings by 250 ms */
+    }
+    tx.new_session = false;
+    if (leader) {
+        append_tone(0x10, gap * 2);
+        tx.data_offset = tape.size;
+        tape.image[tape.size++] = 0;
+        tape.image[tape.size++] = 1;
+        tape.size += 4;
+    }
+    tape.image[tape.size++] = tx.value;
+    put32(tape.image + tx.data_offset + 2, tape.size - tx.data_offset - UEF_CHUNK_HEADER);
+    tape.recorded++;
+    tx.last_end = tx.end;
+}
+
 void elk_tape_advance(uint64_t now)
 {
     while (elk_tape_event <= now) {
-        uint64_t at = elk_tape_event;
-        elk_tape_event = NO_EVENT;
-        tape.ticks = 0;
-        receive_symbol(tape.symbol);
-        schedule(at);
+        if (rx_event <= tx.event) {
+            uint64_t at = rx_event;
+            rx_event = NO_EVENT;
+            tape.ticks = 0;
+            receive_symbol(tape.symbol);
+            schedule(at);
+        } else {
+            record_byte();
+            tx.event = NO_EVENT;
+            elk_ula_raise(INT_TX_EMPTY);
+        }
+        publish_event();
     }
 }
 
 void elk_tape_control(void)
 {
     uint64_t now = elk.cpu.cycles;
-    if (receiving()) {
-        if (elk_tape_event == NO_EVENT && tape.image) {
+    elk_tape_advance(now);
+    bool output = (elk.control & 0x46) == 0x44;
+    if (output != tx.active) {
+        tx.active = output;
+        tx.event = NO_EVENT;
+        tx.data_offset = 0;
+        tx.end = tx.last_end = now;
+        tx.new_session = output;
+        if (output) {
+            elk_ula_raise(INT_TX_EMPTY);
+        }
+    }
+    if (receiving() && tape.mounted) {
+        if (rx_event == NO_EVENT) {
             schedule(now);
-            m6502_lower_until(&elk.cpu, elk_tape_event);
         }
-    } else if (elk_tape_event != NO_EVENT) {
-        elk_tape_advance(now);
-        if (elk_tape_event != NO_EVENT) {
-            tape.ticks = elk_tape_event - now;
-        }
-        elk_tape_event = NO_EVENT;
+    } else if (rx_event != NO_EVENT) {
+        tape.ticks = rx_event - now;
+        rx_event = NO_EVENT;
         tape.ones = tape.bits = 0;
+    }
+    publish_event();
+}
+
+void elk_tape_write(uint8_t value)
+{
+    uint64_t now = elk.cpu.cycles;
+    elk_tape_advance(now);
+    elk.int_status &= ~INT_TX_EMPTY;
+    elk_ula_update_irq();
+    if (tx.active) {
+        tx.value = value;
+        if (tx.event == NO_EVENT) {
+            tx.start = now < tx.end ? tx.end : now;
+            tx.event = tx.start + 9 * TX_BIT_TICKS;
+            tx.end = tx.event + TX_BIT_TICKS;
+        }
+        publish_event();
     }
 }
 
@@ -248,7 +377,8 @@ uint8_t elk_tape_data(void)
 
 void elk_tape_rewind(void)
 {
-    elk_tape_event = NO_EVENT;
+    rx_event = NO_EVENT;
+    publish_event();
     tape.offset = tape.image ? UEF_HEADER : 0;
     tape.chunk = NULL;
     tape.baud = 1200;
@@ -261,8 +391,12 @@ void elk_tape_rewind(void)
 
 bool elk_tape_insert(const char *path)
 {
+    if (strlen(path) >= sizeof(tape.path) || !elk_tape_flush()) {
+        return false;
+    }
     size_t length;
-    uint8_t *image = uef_load(path, &length);
+    bool compressed;
+    uint8_t *image = uef_load(path, &length, &compressed);
     if (!image) {
         return false;
     }
@@ -277,19 +411,79 @@ bool elk_tape_insert(const char *path)
         free(image);
         return false;
     }
+    size_t path_length = strlen(path);
+    bool recording = path_length >= 8 && !strcasecmp(path + path_length - 8, ".rec.uef");
+    FILE *file = recording && !compressed && !disc ? fopen(path, "r+b") : NULL;
+    bool writable = file != NULL;
+    if (file) {
+        fclose(file);
+    }
     free(tape.image);
     tape.image = image;
-    tape.size = length;
+    tape.size = tape.capacity = tape.persisted = length;
+    tape.mounted = true;
+    tape.writable = writable;
+    tape.write_error = tape.full = false;
+    tape.recorded = 0;
+    strcpy(tape.path, path);
+    tx.data_offset = 0;
+    tx.new_session = true;
+    tx.last_end = elk.cpu.cycles;
     elk_tape_rewind();
+    return true;
+}
+
+bool elk_tape_create(const char *path)
+{
+    FILE *file = fopen(path, "wbx");
+    if (!file) {
+        return false;
+    }
+    static const uint8_t header[UEF_HEADER] = "UEF File!\0\x0a";
+    bool ok = fwrite(header, 1, sizeof(header), file) == sizeof(header);
+    ok = fclose(file) == 0 && ok;
+    if (!ok) {
+        remove(path);
+    }
+    return ok;
+}
+
+bool elk_tape_dirty(void)
+{
+    return tape.size > tape.persisted && (!tx.active || !tape.mounted);
+}
+
+bool elk_tape_flush(void)
+{
+    if (tape.size > tape.persisted) {
+        FILE *file = fopen(tape.path, "r+b");
+        bool ok = false;
+        if (file) {
+            size_t length = tape.size - tape.persisted;
+            ok = fseek(file, tape.persisted, SEEK_SET) == 0 &&
+                 fwrite(tape.image + tape.persisted, 1, length, file) == length;
+            ok = fclose(file) == 0 && ok;
+        }
+        tape.write_error = !ok;
+        if (!ok) {
+            return false;
+        }
+        tape.persisted = tape.size;
+        tx.data_offset = 0;
+    }
+    if (!tape.mounted) {
+        free(tape.image);
+        tape.image = NULL;
+        tape.size = tape.capacity = tape.persisted = 0;
+    }
     return true;
 }
 
 void elk_tape_eject(void)
 {
-    free(tape.image);
-    tape.image = NULL;
-    tape.size = 0;
+    tape.mounted = false;
     elk_tape_rewind();
+    elk_tape_flush();
 }
 
 void elk_tape_fast(bool fast)
@@ -300,7 +494,11 @@ void elk_tape_fast(bool fast)
 void elk_tape_status(elk_tape_status_t *status)
 {
     *status = (elk_tape_status_t) {
-        .size = tape.size, .position = tape.offset,
-        .received = tape.received, .playing = elk_tape_event != NO_EVENT,
+        .size = tape.mounted ? tape.size : 0, .position = tape.mounted ? tape.offset : 0,
+        .received = tape.received, .playing = rx_event != NO_EVENT,
+        .recorded = tape.mounted ? tape.recorded : 0,
+        .recording = tx.active && tape.mounted && tape.writable,
+        .writable = tape.mounted && tape.writable,
+        .write_error = tape.write_error || (tape.mounted && tape.full),
     };
 }

@@ -17,7 +17,7 @@
 
 <p align="center">
   <b>Early development:</b> the MOS, BBC BASIC, display, sound, keyboard, UEF cassette
-  playback, Acorn Plus 3 ADFS and ACP 1770 DFS floppy disks, and Plus 1 ROM
+  playback and recording, Acorn Plus 3 ADFS and ACP 1770 DFS floppy disks, and Plus 1 ROM
   cartridges are implemented.
 </p>
 
@@ -88,7 +88,8 @@ core this one shares with the Commodores and the Atari.
   handles `*CAT`, `LOAD`, `CHAIN` and `*RUN` through the emulated ULA.
   **Fast leaders** shortens silences and carrier tones while keeping data
   at tape speed. Use **Real time** for software that depends on tape timing.
-  Tape images are read-only.
+  Blank recording tapes use `.rec.uef` and accept BASIC `SAVE` and
+  machine-code `*SAVE`. Standard `.uef` imports stay read-only.
 
 - Acorn Plus 3 with the original ADFS ROM, WD1770 controller and two
   writable floppy drives. The media browser can create formatted ADFS S,
@@ -134,6 +135,12 @@ cloned next to this repository.
    for a BASIC loader or `*RUN` with the program name for machine code.
    Press Escape to stop `*CAT`. Eject and reinsert a tape to rewind it,
    or send `W` on the serial console.
+   To record, use **New** on the **Tape** row in setup, or choose
+   **Blank recording tape** in the web media browser and mount the new
+   file. Enter `*TAPE` if a disk filing system is active, then use
+   `SAVE "NAME"` and press Return at **RECORD then RETURN**. Recordings
+   append to the tape. The emulator writes them to SD after recording
+   stops. Remount the tape before using `LOAD` or `CHAIN` from the start.
 6. To use ADFS disks, set **Disk expansion** to **Acorn Plus 3 (ADFS)**
    in setup or accept the offer
    after inserting an ADFS image. The expansion needs `adfs.rom` from

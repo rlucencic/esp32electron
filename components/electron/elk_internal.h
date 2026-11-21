@@ -135,6 +135,7 @@ extern uint64_t elk_tape_event;
 void elk_tape_advance(uint64_t now);
 void elk_tape_control(void);
 uint8_t elk_tape_data(void);
+void elk_tape_write(uint8_t value);
 
 /* plus3.c */
 bool elk_plus3_init(void);

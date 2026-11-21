@@ -30,6 +30,40 @@ def explicit_bits(data):
     ])
 
 
+def check_recording(executable, rom, folder, archive_tape):
+    clean = {name: value for name, value in os.environ.items() if not name.startswith("ELK_")}
+    path = folder / "recording.rec.uef"
+
+    def run_tape(commands, frames, **options):
+        return run([executable, rom, str(frames), os.devnull],
+                   env={**clean, "ELK_TYPE": commands, **options},
+                   check=True, capture_output=True, text=True).stdout
+
+    record = r'80:10 ?&D00=42\n|260:SAVE "SAMPLE"\n|500:\n'
+    run_tape(record, 1500, ELK_NEWTAPE=str(path))
+    first_recording = path.read_bytes()
+    assert b"SAMPLE\0" in first_recording
+    overwrite = run([executable, rom, "0", os.devnull],
+                    env={**clean, "ELK_NEWTAPE": str(path)}, capture_output=True)
+    assert overwrite.returncode == 1 and path.read_bytes() == first_recording
+
+    # Eighteen blocks also force the in-memory image to grow. Record them
+    # in a new process with the first recording already on the tape.
+    record_block = (r"100:FOR I%=0 TO 4607:?(I%+&2800)=I% MOD 256:NEXT\n"
+                    r"|460:*SAVE BLOCK 2800 3A00\n|800:\n")
+    run_tape(record_block, 6000, ELK_TAPE=str(path))
+    assert path.read_bytes().startswith(first_recording)
+    program = run_tape(r'100:CHAIN "SAMPLE"\n', 1200, ELK_TAPE=str(path), ELK_DUMP="0D00:1")
+    assert "2A" in program.splitlines(), program
+    block_dump = run_tape(r"100:*LOAD BLOCK 2800\n", 5100, ELK_TAPE=str(path), ELK_DUMP="2800:4608")
+    assert bytes.fromhex(" ".join(block_dump.splitlines()[:-1])) == bytes(range(256)) * 18
+
+    protected = folder / "archive.uef"
+    protected.write_bytes(archive_tape)
+    run_tape(record, 1500, ELK_TAPE=str(protected))
+    assert protected.read_bytes() == archive_tape
+
+
 def main(executable, rom):
     # BASIC line 10 ?&D00=66, and a machine code routine that writes $37 to &D01.
     basic = bytes.fromhex("0D 00 0A 0D 20 3F 26 44 30 30 3D 36 36 0D FF")
@@ -63,6 +97,7 @@ def main(executable, rom):
         result = run([executable, rom, "0", os.devnull], env=env, capture_output=True)
         if result.returncode != 1:
             raise RuntimeError("Corrupt gzip was accepted")
+        check_recording(executable, rom, Path(folder), tape)
     print("Electron tape checks passed")
 
 

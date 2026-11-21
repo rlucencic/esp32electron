@@ -45,6 +45,7 @@ static void storage(bool sd_card)
 /* ---- Tape and floppy media ---- */
 
 enum { DRIVE_TAPE, DRIVE_0, DRIVE_1, DRIVE_SK1, DRIVE_SK2, DRIVE_COUNT };
+enum { TAPE_BLANK_BYTES = 12 };
 
 static char s_tape[160];
 
@@ -107,7 +108,12 @@ static const char *media_path(int drive)
 
 static bool media_write_protected(int drive)
 {
-    if (drive == DRIVE_TAPE || drive >= DRIVE_SK1) {
+    if (drive == DRIVE_TAPE) {
+        elk_tape_status_t tape;
+        elk_tape_status(&tape);
+        return !tape.writable;
+    }
+    if (drive >= DRIVE_SK1) {
         return true;
     }
     elk_disk_status_t disk;
@@ -115,13 +121,26 @@ static bool media_write_protected(int drive)
     return disk.protect;
 }
 
-static bool takes_blank(int drive)
+static bool floppy_drive(int drive)
 {
     return drive == DRIVE_0 || drive == DRIVE_1;
 }
 
+static bool takes_blank(int drive)
+{
+    return drive == DRIVE_TAPE || floppy_drive(drive);
+}
+
+static bool create_media(const char *path, uint32_t size)
+{
+    return size == TAPE_BLANK_BYTES ? elk_tape_create(path) : elk_disk_create(path, size);
+}
+
 static const char *new_extension(uint32_t size)
 {
+    if (size == TAPE_BLANK_BYTES) {
+        return ".rec.uef";
+    }
     if (size == ELK_DFS_40 || size == ELK_DFS_80) {
         return ".ssd";
     }
@@ -130,12 +149,15 @@ static const char *new_extension(uint32_t size)
 
 static uint32_t default_disk_size(int drive)
 {
+    if (drive == DRIVE_TAPE) {
+        return TAPE_BLANK_BYTES;
+    }
     return settings.disk_expansion == DISK_DFS ? ELK_DFS_80 : ELK_ADFS_MEDIUM;
 }
 
 static int expansion_for_disk(int drive)
 {
-    if (!takes_blank(drive) || !media_path(drive)) {
+    if (!floppy_drive(drive) || !media_path(drive)) {
         return DISK_NONE;
     }
     elk_disk_status_t disk;
@@ -172,6 +194,7 @@ static const disks_size_t sizes[] = {
     { ELK_ADFS_LARGE, "640 KiB ADFS L (.ADL)" },
     { ELK_DFS_80, "200 KiB DFS (.SSD)" },
     { ELK_DFS_40, "100 KiB DFS (.SSD)" },
+    { TAPE_BLANK_BYTES, "Blank recording tape (.REC.UEF)" },
 };
 
 static const disks_config_t disks = {
@@ -192,7 +215,7 @@ static const disks_config_t disks = {
     .eject = media_eject,
     .path = media_path,
     .write_protected = media_write_protected,
-    .create = elk_disk_create,
+    .create = create_media,
     .accepts = media_accepts,
     .takes_blank = takes_blank,
     .extension_for = new_extension,
@@ -201,15 +224,18 @@ static const disks_config_t disks = {
     .take_offer = enable_disk_expansion,
 };
 
-static void flush_disks(void *arg)
+static void flush_media(void *arg)
 {
     elk_disks_flush();
+    if (elk_tape_dirty()) {
+        elk_tape_flush();
+    }
 }
 
 static void every_second(void)
 {
-    if (elk_disks_dirty()) {
-        emu_paused(flush_disks, NULL);
+    if (elk_disks_dirty() || elk_tape_dirty()) {
+        emu_paused(flush_media, NULL);
     }
 }
 
@@ -297,9 +323,10 @@ static void status(emu_json_t *j, int section)
         elk_status_t s;
         elk_get_status(&s);
         char detail[80];
-        snprintf(detail, sizeof(detail), "UEF position %zu of %zu bytes", tape.position, tape.size);
-        emu_json_drive(j, drive_names[0], disks_name(0), true, s.motor, tape.received, 0,
-                       tape.size ? detail : NULL);
+        snprintf(detail, sizeof(detail), "UEF position %zu of %zu bytes%s", tape.position, tape.size,
+                 tape.write_error ? ", recording write error" : "");
+        emu_json_drive(j, drive_names[0], disks_name(0), !tape.writable, s.motor, tape.received, tape.recorded,
+                       tape.size || tape.write_error ? detail : NULL);
         for (int drive = 0; drive < ELK_DISK_DRIVES; drive++) {
             elk_disk_status_t disk;
             elk_disk_status(drive, &disk);
@@ -368,7 +395,8 @@ static void status(emu_json_t *j, int section)
              "Pause or F12 BREAK", s.caps_lock ? "on" : "off");
     emu_json_row(j, "Keyboard", text);
     snprintf(text, sizeof(text), "Motor %s%s, %s", s.motor ? "on" : "off",
-             tape.playing ? " (playing)" : "", settings.fast_tape ? "fast leaders" : "real time");
+             tape.recording ? " (recording)" : tape.playing ? " (playing)" : "",
+             settings.fast_tape ? "fast leaders" : "real time");
     emu_json_row(j, "Cassette", text);
     if (plus3.enabled) {
         snprintf(text, sizeof(text), "%s, WD1770 command &amp;%02X status &amp;%02X, "

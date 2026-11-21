@@ -78,7 +78,7 @@ blank disks. Mounted media names are remembered across restarts.
 | `components/electron/` | The machine, platform independent (`include/electron.h`) |
 | `components/electron/elk.c` | Set up, reset, BREAK, the frame loop, the 6502's bus and its timing |
 | `components/electron/ula.c` | The ULA's registers, interrupts, ROM paging |
-| `components/electron/tape.c` | UEF cassette chunks, bit timing and the ULA's cassette receiver |
+| `components/electron/tape.c` | UEF cassette playback, transmit timing and append-only recording |
 | `components/electron/uef.c` | Shared raw and gzip UEF reader with chunk validation |
 | `components/electron/plus3.c` | WD1770, drive latch, raw ADFS and DFS images and disk writeback |
 | `components/electron/plus1.c` | Raw ROM cartridge loading and mapping for SK1 and SK2 |
@@ -193,6 +193,18 @@ blank disks. Mounted media names are remembered across restarts.
 
 ## Testing
 
+- **Cassette recording (2026-11-21).** The ULA raises TxEmpty at the
+  end of the eighth data bit. The host recorded a BASIC program through
+  the MOS, then appended an 18-block machine-code file in a fresh process.
+  Both loaded from the saved UEF, and the block data matched byte for
+  byte. The host also checked that creation fails if a file already
+  exists, and an imported tape remains unchanged after a guest SAVE.
+  Exile saved a four-block position file through its own menu. The MOS
+  loaded the recorded 1,024 bytes back and matched the original data.
+  Both the MaTouch and Tab5 created a recording tape over the web
+  interface, saved a BASIC program to SD, then remounted and ran it.
+  The MaTouch appended another 18 blocks without changing the first
+  recording, and the host reloaded all 4,608 appended bytes.
 - **Original software and UEF disk media (2026-11-21).** Twelve additional
   original tapes reached their menus or opening screens, including all
   four Mini Office programs, Exile, Citadel and Magic Mushrooms. Seven
@@ -263,7 +275,9 @@ blank disks. Mounted media names are remembered across restarts.
   `ELK_WATCH` (a CPU write to an address: the instructions before),
   `ELK_ZP` (zero page with the registers), `ELK_DASM`, `ELK_DUMP`,
   `ELK_KEYS`, `ELK_TYPE`, `ELK_WAV`, `ELK_ADFS`, `ELK_TAPE`, and
-  `ELK_TAPE_FAST`. For the Plus 3, set `ELK_ADFS` and mount raw images
+  `ELK_TAPE_FAST`. `ELK_NEWTAPE` creates and mounts a blank
+  `.rec.uef`; use `ELK_TAPE` to append to one already on disk.
+  For the Plus 3, set `ELK_ADFS` and mount raw images
   with `ELK_DISK0` and `ELK_DISK1`. `ELK_NEWDISK` creates a formatted
   ADFS M image and mounts it in drive 0. For the Plus 1, use `ELK_PLUS1`
   for Expansion 1.00 and `ELK_SK1` and `ELK_SK2` for the cartridges.
