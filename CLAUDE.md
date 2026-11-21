@@ -193,6 +193,16 @@ blank disks. Mounted media names are remembered across restarts.
 
 ## Testing
 
+- **Double-sided DFS (2026-11-21).** ACP DFS uses drives 0 and 2 for
+  the two surfaces of the first disk and 1 and 3 for the second disk.
+  The host played Snapper and Repton from opposite sides of one DSD
+  assembled from the supplied SSD images. Repton also booted from the
+  second side of a gzip UEF. The original ROM formatted both sides of
+  a 40-track DSD and verified the second side. `check-dfs` tests
+  independent catalogues and save/reload on 40- and 80-track DSDs.
+  ACP's `*BACKUP 0 2` copied every track between sides. The MaTouch and
+  Tab5 booted Repton from drive 2, saved and ran a BASIC program on drive 3
+  after remounting, and switched back to ADFS to catalogue the Welcome disk.
 - **Cassette recording (2026-11-21).** The ULA raises TxEmpty at the
   end of the eighth data bit. The host recorded a BASIC program through
   the MOS, then appended an 18-block machine-code file in a fresh process.
@@ -282,7 +292,8 @@ blank disks. Mounted media names are remembered across restarts.
   ADFS M image and mounts it in drive 0. For the Plus 1, use `ELK_PLUS1`
   for Expansion 1.00 and `ELK_SK1` and `ELK_SK2` for the cartridges.
   Set `ELK_DFS` in place of `ELK_ADFS` for ACP DFS. In DFS mode,
-  `ELK_NEWDISK` creates a formatted 80-track SSD.
+  `ELK_NEWDISK` creates a formatted 80-track SSD or DSD according to
+  the filename extension.
 
 ## Working with the user
 

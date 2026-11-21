@@ -16,6 +16,8 @@
 #define TRACK_SIZE (SECTOR_SIZE * SECTORS_PER_TRACK)
 #define TRACK_BYTES 6250
 #define DFS_SECTORS_PER_TRACK 10
+#define DFS_TRACK_SIZE (SECTOR_SIZE * DFS_SECTORS_PER_TRACK)
+#define DFS_CAPACITY_OFFSET (SECTOR_SIZE + 6)
 #define MAX_TRACK 83
 #define BYTE_TICKS 64                   /* 32 us at 250 kbit/s */
 #define REVOLUTION (ELK_CPU_HZ / 5)     /* 300 rpm */
@@ -233,7 +235,7 @@ static void read_track(drive_t *drive)
         p = gap(p, 0, 6);
         *p++ = 0xFC;
         for (int sector = 0; sector < drive->sectors_per_track; sector++) {
-            uint8_t id[] = { drive->head, 0, sector, 1 };
+            uint8_t id[] = { drive->head, side(), sector, 1 };
             p = gap(p, 0xFF, 12);
             p = field(p, 0xFE, id, sizeof(id));
             p = gap(p, 0xFF, 11);
@@ -566,11 +568,13 @@ static bool geometry(const char *path, size_t size, drive_t *drive)
     if (!ext) {
         return false;
     }
-    if (!strcasecmp(ext, ".ssd")) {
-        drive->tracks = size == ELK_DFS_40 ? 40 : 80;
-        drive->sides = 1;
+    bool dsd = !strcasecmp(ext, ".dsd");
+    if (dsd || !strcasecmp(ext, ".ssd")) {
+        drive->sides = dsd ? 2 : 1;
+        drive->tracks = size == ELK_DFS_40 * drive->sides ? 40 : 80;
         drive->sectors_per_track = DFS_SECTORS_PER_TRACK;
-        return size == ELK_DFS_40 || size == ELK_DFS_80;
+        drive->interleaved = dsd;
+        return size == ELK_DFS_40 * drive->sides || size == ELK_DFS_80 * drive->sides;
     }
     drive->tracks = size == ELK_ADFS_SMALL ? 40 : 80;
     drive->sides = size == ELK_ADFS_LARGE ? 2 : 1;
@@ -584,23 +588,38 @@ static bool geometry(const char *path, size_t size, drive_t *drive)
            (!strcasecmp(ext, ".adm") && size == ELK_ADFS_MEDIUM);
 }
 
+static size_t dfs_capacity(const uint8_t *catalogue)
+{
+    size_t bytes = (((catalogue[0] & 3) << 8) | catalogue[1]) * SECTOR_SIZE;
+    return bytes == ELK_DFS_40 || bytes == ELK_DFS_80 ? bytes : 0;
+}
+
+static size_t read_dfs_capacity(FILE *file, size_t length, size_t track_start)
+{
+    uint8_t catalogue[2];
+    if (length >= track_start + 2 * SECTOR_SIZE &&
+        fseek(file, track_start + DFS_CAPACITY_OFFSET, SEEK_SET) == 0 &&
+        fread(catalogue, 1, sizeof(catalogue), file) == sizeof(catalogue)) {
+        return dfs_capacity(catalogue);
+    }
+    return 0;
+}
+
 static size_t disk_capacity(FILE *file, const char *path, size_t length)
 {
     const char *ext = strrchr(path, '.');
-    if (!ext || strcasecmp(ext, ".ssd") || length < 2 * SECTOR_SIZE ||
-        length >= ELK_DFS_80 || length % SECTOR_SIZE) {
+    bool dsd = ext && !strcasecmp(ext, ".dsd");
+    if ((!dsd && (!ext || strcasecmp(ext, ".ssd"))) || length % SECTOR_SIZE ||
+        length >= (dsd ? ELK_DFS_DSD_80 : ELK_DFS_80)) {
         return length;
     }
-    /* Archives often omit unused sectors from the end of an SSD. */
-    uint8_t catalogue[2];
-    if (fseek(file, SECTOR_SIZE + 6, SEEK_SET) == 0 &&
-        fread(catalogue, 1, sizeof(catalogue), file) == sizeof(catalogue)) {
-        size_t size = (((catalogue[0] & 3) << 8) | catalogue[1]) * SECTOR_SIZE;
-        if (size == ELK_DFS_40 || size == ELK_DFS_80) {
-            return size;
-        }
-    }
-    return length;
+    /* Archives can omit unused trailing sectors. Both DFS surfaces
+     * have a catalogue, and the higher declared capacity sets the geometry.
+     */
+    size_t first = read_dfs_capacity(file, length, 0);
+    size_t second = dsd ? read_dfs_capacity(file, length, DFS_TRACK_SIZE) : 0;
+    size_t surface = first > second ? first : second;
+    return surface ? surface * (dsd ? 2 : 1) : length;
 }
 
 /* Implicit UEF sides are in logical sector order. Older UEFs leave the
@@ -650,15 +669,14 @@ static bool load_uef_disk(const char *path, drive_t *drive)
             tracks = total / (side_count * sectors);
         }
     } else if (sectors == DFS_SECTORS_PER_TRACK && !tracks && lengths[0] >= 2 * SECTOR_SIZE) {
-        unsigned total = ((sides[0][0x106] & 3) << 8) | sides[0][0x107];
-        if (total == 400 || total == 800) {
-            tracks = total / sectors;
-        }
+        size_t first = dfs_capacity(sides[0] + DFS_CAPACITY_OFFSET);
+        size_t second = lengths[1] >= 2 * SECTOR_SIZE ? dfs_capacity(sides[1] + DFS_CAPACITY_OFFSET) : 0;
+        tracks = (first > second ? first : second) / DFS_TRACK_SIZE;
     }
     size_t side_size = (size_t)tracks * sectors * SECTOR_SIZE;
     valid = (tracks == 40 || tracks == 80) && lengths[0] <= side_size && lengths[1] <= side_size &&
             ((sectors == SECTORS_PER_TRACK && (side_count == 1 || tracks == 80)) ||
-             (sectors == DFS_SECTORS_PER_TRACK && side_count == 1));
+             sectors == DFS_SECTORS_PER_TRACK);
     if (valid) {
         drive->size = side_size * side_count;
         drive->image = ELK_SLOW_ALLOC(drive->size);
@@ -824,8 +842,9 @@ bool elk_disk_create(const char *path, uint32_t size)
     uint8_t initial[7 * SECTOR_SIZE] = { 0 };
     unsigned sectors = size / SECTOR_SIZE;
     if (drive.sectors_per_track == DFS_SECTORS_PER_TRACK) {
-        initial[0x106] = sectors >> 8;
-        initial[0x107] = sectors;
+        unsigned per_side = sectors / drive.sides;
+        initial[DFS_CAPACITY_OFFSET] = per_side >> 8;
+        initial[DFS_CAPACITY_OFFSET + 1] = per_side;
     } else {
         format_adfs(initial, sectors, path);
     }
@@ -840,6 +859,10 @@ bool elk_disk_create(const char *path, uint32_t size)
         size_t bytes = size - pos < sizeof(zeros) ? size - pos : sizeof(zeros);
         ok = fwrite(zeros, 1, bytes, file) == bytes;
         pos += bytes;
+    }
+    if (ok && drive.sectors_per_track == DFS_SECTORS_PER_TRACK && drive.sides == 2) {
+        ok = fseek(file, DFS_TRACK_SIZE + DFS_CAPACITY_OFFSET, SEEK_SET) == 0 &&
+             fwrite(initial + DFS_CAPACITY_OFFSET, 1, 2, file) == 2;
     }
     ok = fclose(file) == 0 && ok;
     if (!ok) {

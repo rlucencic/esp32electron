@@ -97,9 +97,9 @@ core this one shares with the Commodores and the Atari.
 
 - Two Plus 1 cartridge sockets for read-only ROM images, with optional
   Acorn Expansion 1.00 firmware.
-- ACP 1770 DFS with writable 40- and 80-track single-sided `.ssd` images.
-  The media browser can create formatted disks, and trimmed archive
-  images expand as the guest writes new sectors.
+- ACP 1770 DFS with writable 40- and 80-track `.ssd` and `.dsd` images.
+  The media browser can create formatted disks. Trimmed archive images
+  expand as the guest writes new sectors.
 
 **Next:** more original software testing.
 
@@ -158,7 +158,7 @@ a mounted image. [Acorn Plus 3 User Guide](https://chrisacorns.computinghistory.
 
 Some archive `.uef` files contain floppy disks. Mount those in **Drive 0**
 or **Drive 1**. Raw and gzip-compressed UEFs with standard ADFS or
-single-sided DFS disk data mount read-only. [UEF format specification](https://electrem.emuunlim.com/UEFSpecs.htm)
+DFS disk data mount read-only. [UEF format specification](https://electrem.emuunlim.com/UEFSpecs.htm)
 
 After a rejected save in Acorn ADFS, use `*MOUNT` to reload the disk map.
 
@@ -166,10 +166,15 @@ After a rejected save in Acorn ADFS, use `*MOUNT` to reload the disk map.
 
 Supply `acpdfs.rom` in `roms/` before flashing or in `electron/roms/`
 on the SD card. Select **ACP 1770 DFS** under **Disk expansion** or mount
-an `.ssd` image and accept the offer to switch. The DFS interface uses
-cartridge socket SK1. In BASIC, enter `*DRIVE 0` or `*DRIVE 1` and
-`*CAT`. Use **New** to make a 100 or 200 KiB DFS disk, or use the ROM's
-`*FORM 40 0` or `*FORM 80 0` with an image of the corresponding size.
+an `.ssd` or `.dsd` image and accept the offer to switch. The DFS interface
+uses cartridge socket SK1. In BASIC, enter `*DRIVE 0` or `*DRIVE 1` and
+`*CAT`. Use `*DRIVE 2` for the second side in physical Drive 0, and
+`*DRIVE 3` for the second side in physical Drive 1.
+[Acorn service manual](https://acorn.huininga.nl/pub/docs/manuals/Acorn/Acorn%20Cambridge%20Workstation/Acorn%20ACW443%20Service%20Manual.pdf)
+
+**New** offers 100 and 200 KiB single-sided SSDs and a 400 KiB
+double-sided DSD.
+To format both sides of a 40-track DSD in Drive 0, use `*FORM 40 0 2`.
 
 ### Plus 1 cartridges
 

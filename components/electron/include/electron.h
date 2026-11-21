@@ -111,6 +111,7 @@ void elk_tape_status(elk_tape_status_t *status);
 #define ELK_ADFS_LARGE  (640u * 1024)
 #define ELK_DFS_40      (100u * 1024)
 #define ELK_DFS_80      (200u * 1024)
+#define ELK_DFS_DSD_80  (2 * ELK_DFS_80)
 
 typedef struct {
     size_t size;

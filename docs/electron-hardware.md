@@ -830,6 +830,12 @@ track on one side. The catalogue supplies the sector count for images
 with unused trailing sectors omitted.
 [MAME AP3/AP4 device](https://github.com/mamedev/mame/blob/master/src/devices/bus/electron/cart/ap34.cpp)
 
+DFS gives each side its own catalogue. DSD stores successive tracks as
+T0S0, T0S1, T1S0, T1S1, with 2,560 bytes per track on each side. The
+emulator can use the catalogues to recover the intended geometry of a
+trimmed DSD.
+[MAME Acorn disk formats](https://github.com/mamedev/mame/blob/master/src/lib/formats/acorn_dsk.cpp)
+
 ### 9.1 What it is
 
 A WD1770 controller, a 3.5" 80-track drive (single- or double-sided

@@ -60,7 +60,7 @@ static bool media_accepts(int drive, const char *path)
     }
     return drive == DRIVE_TAPE ? !strcasecmp(ext, ".uef") :
            !strcasecmp(ext, ".adf") || !strcasecmp(ext, ".ads") ||
-           !strcasecmp(ext, ".adm") || !strcasecmp(ext, ".adl") || !strcasecmp(ext, ".ssd") ||
+           !strcasecmp(ext, ".adm") || !strcasecmp(ext, ".adl") || !strcasecmp(ext, ".ssd") || !strcasecmp(ext, ".dsd") ||
            !strcasecmp(ext, ".uef");
 }
 
@@ -144,6 +144,9 @@ static const char *new_extension(uint32_t size)
     if (size == ELK_DFS_40 || size == ELK_DFS_80) {
         return ".ssd";
     }
+    if (size == ELK_DFS_DSD_80) {
+        return ".dsd";
+    }
     return size == ELK_ADFS_LARGE ? ".adl" : ".adf";
 }
 
@@ -186,7 +189,7 @@ static void enable_disk_expansion(int drive)
     set_disk_expansion(expansion_for_disk(drive));
 }
 
-static const char *const extensions[] = { ".uef", ".adf", ".ads", ".adm", ".adl", ".ssd", ".rom", ".bin", NULL };
+static const char *const extensions[] = { ".uef", ".adf", ".ads", ".adm", ".adl", ".ssd", ".dsd", ".rom", ".bin", NULL };
 static const char *const drive_names[] = { "Tape", "Drive 0", "Drive 1", "Cartridge SK1", "Cartridge SK2" };
 static const disks_size_t sizes[] = {
     { ELK_ADFS_MEDIUM, "320 KiB ADFS M (.ADF)" },
@@ -194,6 +197,7 @@ static const disks_size_t sizes[] = {
     { ELK_ADFS_LARGE, "640 KiB ADFS L (.ADL)" },
     { ELK_DFS_80, "200 KiB DFS (.SSD)" },
     { ELK_DFS_40, "100 KiB DFS (.SSD)" },
+    { ELK_DFS_DSD_80, "400 KiB DFS (.DSD)" },
     { TAPE_BLANK_BYTES, "Blank recording tape (.REC.UEF)" },
 };
 

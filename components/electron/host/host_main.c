@@ -10,7 +10,7 @@
  *   ELK_SK1, ELK_SK2        cartridge images in the two Plus 1 sockets
  *   ELK_DISK0=<path>        an ADFS disk in drive 0 (writes persist)
  *   ELK_DISK1=<path>        an ADFS disk in drive 1
- *   ELK_NEWDISK=<path>      create a 320 KiB disk and mount it in drive 0
+ *   ELK_NEWDISK=<path>      create and mount a blank ADFS or DFS disk
  *   ELK_LOG=<n>             the CPU's state every n frames
  *   ELK_SHOTS=<n>           a picture every n frames (out-NNNNN.ppm)
  *   ELK_STOP=<pc>[:<frame>] stop at pc (hex), from that frame on: the
@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "electron.h"
 #include "elk_internal.h"
 #include "m6502.h"
@@ -247,7 +248,10 @@ int main(int argc, char **argv)
     }
 
     const char *new_disk = getenv("ELK_NEWDISK");
-    if (new_disk && !elk_disk_create(new_disk, cfg.dfs ? ELK_DFS_80 : ELK_ADFS_MEDIUM)) {
+    const char *ext = new_disk ? strrchr(new_disk, '.') : NULL;
+    uint32_t disk_size = cfg.dfs ? (ext && !strcasecmp(ext, ".dsd") ? ELK_DFS_DSD_80 : ELK_DFS_80) :
+                                  ELK_ADFS_MEDIUM;
+    if (new_disk && !elk_disk_create(new_disk, disk_size)) {
         fprintf(stderr, "%s: could not create a floppy disk\n", new_disk);
         return 1;
     }
