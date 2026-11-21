@@ -66,7 +66,7 @@ typedef struct {
     /* The ULA */
     uint8_t int_status, int_enable;
     uint8_t rom_page;                   /* the ULA latch, $FE05 bits 0-3 */
-    bool adfs_selected;                 /* the separate Plus 3 ROM latch */
+    uint8_t external_page;             /* the expansion bus ROM latches */
     uint16_t screen_start;              /* $FE02/$FE03: the next frame's */
     uint8_t counter;                    /* $FE06 */
     uint8_t control;                    /* $FE07 */
@@ -86,6 +86,8 @@ typedef struct {
     volatile uint8_t matrix[14];
     bool break_down;
 } elk_t;
+
+const uint8_t *elk_cart_bank(unsigned page);
 
 extern elk_t elk;
 

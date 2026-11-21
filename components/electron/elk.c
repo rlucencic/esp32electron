@@ -18,12 +18,13 @@ static uint8_t s_ff_page[256];          /* nothing there: $FF */
 
 /* ---- Memory map ---- */
 
-/* The ULA supplies the keyboard and BASIC. Otherwise the Plus 3 may
- * drive the data bus through its own ROM select latch.
+/* The ULA supplies the keyboard and BASIC. The expansions select
+ * the other ROMs through their own latches.
  */
 void elk_map_rom(void)
 {
-    const uint8_t *rom = elk.adfs_selected ? elk.adfs : NULL;
+    const uint8_t *rom = NULL;
+    unsigned mask = ELK_PAGED_ROM_SIZE - 1;
     switch (elk.rom_page) {
     case 8: case 9:
         for (int p = 0x80; p < 0xC0; p++) {
@@ -34,10 +35,18 @@ void elk_map_rom(void)
         rom = elk.basic;
         break;
     default:
+        if (elk.external_page < 4) {
+            rom = elk_cart_bank(elk.external_page);
+        } else if (elk.external_page == 4) {
+            rom = elk.adfs;
+        } else if (elk.external_page == 12) {
+            rom = elk.cfg.plus1;
+            mask = ELK_PLUS1_ROM_SIZE - 1;
+        }
         break;
     }
     for (int p = 0x80; p < 0xC0; p++) {
-        elk.cpu.rd[p] = rom ? (uint8_t *)rom + (p - 0x80) * 256 : s_ff_page;
+        elk.cpu.rd[p] = rom ? (uint8_t *)rom + (((p - 0x80) * 256) & mask) : s_ff_page;
     }
 }
 
@@ -127,6 +136,9 @@ static uint8_t bus_read(void *ctx, uint16_t a)
     }
     if (a >= 0xFC00 && a < 0xFE00) {
         wait_io(c);
+        if (elk.cfg.plus1 && a == 0xFC72) {
+            return 0x3F;               /* ADC ready, fire buttons released, printer idle */
+        }
         return elk.adfs && (a & 0xFFF0) == 0xFCC0 ? elk_plus3_read(a) : 0xFF;
     }
     return elk.mos[a - 0xC000];
@@ -293,7 +305,7 @@ void elk_get_status(elk_status_t *s)
     s->s = elk.cpu.s;
     s->p = elk.cpu.p;
     s->mode = elk.mode;
-    s->rom_page = elk.adfs_selected && (elk.rom_page & 0x0C) != 8 ? 4 : elk.rom_page;
+    s->rom_page = (elk.rom_page & 0x0C) == 8 ? elk.rom_page : elk.external_page;
     s->caps_lock = (elk.control & 0x80) != 0;
     s->motor = (elk.control & 0x40) != 0;
     s->comms = (elk.control >> 1) & 3;

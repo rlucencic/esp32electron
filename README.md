@@ -17,7 +17,7 @@
 
 <p align="center">
   <b>Early development:</b> the MOS, BBC BASIC, display, sound, keyboard, UEF cassette
-  playback and Acorn Plus 3 ADFS floppy disks are implemented.
+  playback, Acorn Plus 3 ADFS floppy disks and Plus 1 ROM cartridges are implemented.
 </p>
 
 <p align="center">
@@ -93,7 +93,10 @@ core this one shares with the Commodores and the Atari.
   writable floppy drives. The media browser can create formatted ADFS S,
   M and L disks.
 
-**Next:** more original software, Plus 1 ROM cartridges and ACP's 1770 DFS.
+- Two Plus 1 cartridge sockets for read-only ROM images, with optional
+  Acorn Expansion 1.00 firmware.
+
+**Next:** more original software and ACP's 1770 DFS.
 
 ## Hardware
 
@@ -141,6 +144,18 @@ of side 0 followed by all of side 1. Use **New** to create an empty
 formatted disk or run `*EFORM` from the original Welcome disc to format
 a mounted image. [Acorn Plus 3 User Guide](https://chrisacorns.computinghistory.org.uk/docs/Acorn/Manuals/Acorn_Plus3UG.pdf)
 
+### Plus 1 cartridges
+
+Mount a raw `.rom` or `.bin` image in **Cartridge SK1** or **Cartridge SK2**
+in **Media** or the web interface. Reset the Electron after inserting or
+removing a cartridge so the MOS rescans its ROMs. Images can be 8, 16 or
+32 KiB. A 32 KiB image holds the lower bank followed by the upper bank.
+
+Add the optional `plus1.rom` to `roms/` before flashing, or put it in
+`electron/roms/` on the SD card and restart the emulator. Acorn's
+Expansion 1.00 provides cartridge boot and language selection. The
+analogue and printer ports expose idle status. [Acorn Plus 1 User Guide](https://chrisacorns.computinghistory.org.uk/docs/Acorn/Manuals/Acorn_Plus1UG.pdf)
+
 ## Development
 
 The machine (`components/electron`) is platform independent;
@@ -149,6 +164,7 @@ The machine (`components/electron`) is platform independent;
 ```sh
 make -C components/electron/host run      # 300 frames: the BASIC prompt in build/screen.ppm
 make -C components/electron/host check    # cassette regression checks (requires zlib)
+make -C components/electron/host check-plus1  # cartridge paging and ROM priority
 make -C components/electron/host check-plus3  # ADFS save, compact, reload and side selection
 ELK_TYPE='40:PRINT 2+2\n' ./components/electron/host/build/elk_host roms/os_basic.ic2 200 out.ppm
 ```

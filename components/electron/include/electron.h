@@ -14,6 +14,8 @@
 #define ELK_OS_BASIC_SIZE       (32 * 1024)     /* BASIC $8000-$BFFF, then the MOS */
 #define ELK_PAGED_ROM_SIZE      (16 * 1024)
 #define ELK_RAM_SIZE            (32 * 1024)
+#define ELK_PLUS1_ROM_SIZE      (4 * 1024)
+#define ELK_CART_SLOTS          2
 
 /* The picture: 640 x 256 (modes with fewer pixels drawn wider) */
 #define ELK_SCREEN_WIDTH        640
@@ -28,12 +30,21 @@ typedef struct {
     uint8_t *ram;               /* ELK_RAM_SIZE bytes */
     /* The Plus 3's ADFS ROM (ELK_PAGED_ROM_SIZE bytes); NULL: no Plus 3 */
     const uint8_t *adfs;
+    const uint8_t *plus1;       /* optional Expansion 1.00, ELK_PLUS1_ROM_SIZE bytes */
 } elk_config_t;
 
 bool elk_init(const elk_config_t *config);
 void elk_reset(void);                   /* power off and on */
 void elk_run_frame(void);
 bool elk_halted(void);
+
+/* Plus 1 sockets SK1 and SK2, in that order. Reset after changing media
+ * so the MOS rescans the sideways ROMs.
+ */
+bool elk_cart_insert(int slot, const char *path);
+void elk_cart_eject(int slot);
+const char *elk_cart_path(int slot);
+size_t elk_cart_size(int slot);
 
 /* ---- Display ---- */
 uint32_t elk_screen_signature(void);

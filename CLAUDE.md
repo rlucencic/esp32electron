@@ -2,8 +2,9 @@
 
 An Acorn Electron (1983): a 6502A at 2 MHz (1 MHz to RAM and the ULA), 32
 KB RAM, the ULA (display, sound, cassette, keyboard, interrupts, ROM
-paging), BBC BASIC II and MOS 1.00 in a 32 KB ROM, and an Acorn Plus 3
-(ADFS and a WD1770 for 3.5" drives). Both boards, as the QL. The plan: esp32emu's
+paging), BBC BASIC II and MOS 1.00 in a 32 KB ROM, an Acorn Plus 3
+(ADFS and a WD1770 for 3.5" drives), and the Plus 1 cartridge sockets.
+Both boards, as the QL. The plan: esp32emu's
 CLAUDE.md, "To do" (the Electron's entry). **What's next: `TODO.md`**.
 
 The board side (tasks, LCD, touch, SD, WiFi, BLE, setup screen, web page,
@@ -32,7 +33,8 @@ bash -c '. ~/.espressif/tools/activate_idf_v5.5.6.sh >/dev/null 2>&1; idf.py bui
 - The two builds share `managed_components/`: build one after the other,
   never both at once.
 - `flash` writes the ROMs into 64 KB slots of `elk_roms` (0x810000):
-  `os_basic.ic2` slot 0 (32 KB: BASIC then the MOS), `adfs.rom` slot 1. A
+  `os_basic.ic2` slot 0 (32 KB: BASIC then the MOS), `adfs.rom` slot 1,
+  and optional `plus1.rom` slot 2. A
   file of the same name in the SD card's `electron/roms` overrides one
   (`roms/README.md`: where they come from). The boards are shared with the
   other projects: after another one, a full `flash`.
@@ -42,6 +44,7 @@ bash -c '. ~/.espressif/tools/activate_idf_v5.5.6.sh >/dev/null 2>&1; idf.py bui
   ones too, the usual kind: TOSEC's are), listed by the web page and the
   setup screen's Media page. Playback uses the ULA cassette receiver.
   The same folder holds writable raw ADFS disks for the two Plus 3 drives.
+  Plus 1 sockets SK1 and SK2 take read-only `.rom` and `.bin` images.
 - The MaTouch: its UART port, not native USB (the speaker's lines); opening
   that port resets the board.
 - `../esp32emu/tools/emu_console.py PORT log N | lcd F.png | send "cmd" |
@@ -77,6 +80,7 @@ blank disks. Mounted media names are remembered across restarts.
 | `components/electron/ula.c` | The ULA's registers, interrupts, ROM paging |
 | `components/electron/tape.c` | UEF parsing, gzip input, bit timing and the ULA's cassette receiver |
 | `components/electron/plus3.c` | WD1770, drive latch, raw ADFS images and disk writeback |
+| `components/electron/plus1.c` | Raw ROM cartridge loading and mapping for SK1 and SK2 |
 | `components/electron/video.c` | The picture: line records, modes 0-6, three frames for the presenter |
 | `components/electron/sound.c` | The square wave, two samples a line into the sound ring |
 | `components/electron/keyboard.c` | The keyboard matrix as the CPU reads it |
@@ -188,6 +192,17 @@ blank disks. Mounted media names are remembered across restarts.
 
 ## Testing
 
+- **Plus 1 cartridges (2026-11-21).** The host's `check-plus1` target
+  verifies both banks, 8 KiB mirroring, and the ULA's priority over external
+  ROMs. The original Expansion 1.00 booted VIEW from either socket on the
+  host, including with ADFS active. VIEW saved a document to ADFS on the
+  host. The MaTouch booted VIEW in SK1 and the Tab5 booted it in SK2.
+  Both boards reopened a document after saving it and remounting its
+  disk. The host also loaded the original
+  Elite, Starship Command, Hopper, Sphinx Adventure and Arcadians tapes.
+  Elite reached the Commander Jameson status screen, Starship Command,
+  Hopper and Arcadians reached gameplay, and Sphinx Adventure accepted
+  movement and look commands.
 - **Acorn Plus 3 (2026-11-21).** The original ADFS ROM uses page 4 and
   polls the WD1770 at $FCC4–$FCC7. The latch at $FCC0 selects the drive,
   side, density and controller reset. Setup enables the expansion and
@@ -221,7 +236,8 @@ blank disks. Mounted media names are remembered across restarts.
   `ELK_KEYS`, `ELK_TYPE`, `ELK_WAV`, `ELK_ADFS`, `ELK_TAPE`, and
   `ELK_TAPE_FAST`. For the Plus 3, set `ELK_ADFS` and mount raw images
   with `ELK_DISK0` and `ELK_DISK1`. `ELK_NEWDISK` creates a formatted
-  ADFS M image and mounts it in drive 0.
+  ADFS M image and mounts it in drive 0. For the Plus 1, use `ELK_PLUS1`
+  for Expansion 1.00 and `ELK_SK1` and `ELK_SK2` for the cartridges.
 
 ## Working with the user
 

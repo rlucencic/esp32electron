@@ -23,10 +23,10 @@ project(esp32electron)
 
 # ROM images (not in git) go into 64 KB slots of the elk_roms partition on
 # "idf.py flash" (main/rom_store.c): os_basic.ic2 (BBC BASIC II and the MOS,
-# 32 KB) in slot 0, adfs.rom (the Plus 3's ADFS) in slot 1
+# 32 KB) in slot 0, adfs.rom in slot 1 and optional plus1.rom in slot 2.
 partition_table_get_partition_info(rom_partition "--partition-name elk_roms" "offset")
 if(rom_partition)
-    foreach(entry "os_basic.ic2:0" "adfs.rom:1")
+    foreach(entry "os_basic.ic2:0" "adfs.rom:1" "plus1.rom:2")
         string(REPLACE ":" ";" parts "${entry}")
         list(GET parts 0 rom)
         list(GET parts 1 slot)
@@ -35,7 +35,7 @@ if(rom_partition)
         if(EXISTS "${rom_image}")
             math(EXPR offset "${rom_partition} + ${slot} * 65536" OUTPUT_FORMAT HEXADECIMAL)
             esptool_py_flash_target_image(flash "rom_${target}" "${offset}" "${rom_image}" ALWAYS_PLAINTEXT)
-        else()
+        elseif(NOT rom STREQUAL "plus1.rom")
             message(WARNING "${rom_image} missing: it will not be flashed")
         endif()
     endforeach()

@@ -18,6 +18,7 @@ static const struct {
 } roms[ROM_COUNT] = {
     [ROM_OS_BASIC] = { "os_basic.ic2", 32 * 1024 },
     [ROM_ADFS] = { "adfs.rom", 16 * 1024 },
+    [ROM_PLUS1] = { "plus1.rom", 4 * 1024 },
 };
 
 const char *rom_store_name(rom_id_t id)
@@ -45,7 +46,7 @@ static bool paged_rom(const uint8_t *p)
  */
 static bool plausible(rom_id_t id, const uint8_t *p)
 {
-    if (id == ROM_ADFS) {
+    if (id != ROM_OS_BASIC) {
         return paged_rom(p);
     }
     uint16_t reset = p[0x7FFC] | (p[0x7FFD] << 8);

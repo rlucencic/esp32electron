@@ -39,7 +39,10 @@ check: $(BUILD)/elk_host
 check-plus3: $(BUILD)/elk_host
 	python3 check_plus3.py ./$(BUILD)/elk_host $(ROM) $(ADFS)
 
+check-plus1: $(BUILD)/elk_host
+	python3 check_plus1.py ./$(BUILD)/elk_host $(ROM)
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: run check check-plus3 clean
+.PHONY: run check check-plus1 check-plus3 clean

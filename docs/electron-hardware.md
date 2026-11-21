@@ -798,7 +798,10 @@ them the word COPY"]. Both SHIFT keys share one switch [TECH].
 
 ## 8. The Plus 1
 
-Brief; to be completed when it is emulated.
+The cartridge sockets and the optional Expansion 1.00 ROM are implemented.
+The emulator maps a raw 8 KiB image twice in the lower bank, a 16 KiB
+image in the lower bank, and a 32 KiB image in both banks. Printer and
+analogue inputs present idle and released status.
 
 - Adds two cartridge slots, a Centronics printer port and a 4-channel
   ADC (two joysticks, two fire buttons) [P1UG ch.1] [one source].

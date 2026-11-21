@@ -23,7 +23,7 @@
 static const char *TAG = "main";
 
 static elk_config_t s_cfg;
-static uint8_t *s_os_basic, *s_adfs;
+static uint8_t *s_os_basic, *s_adfs, *s_plus1;
 
 /* ---- Memory: everything at power-on, before the screen, WiFi and
  * Bluetooth fragment PSRAM
@@ -33,17 +33,18 @@ static void reserve_memory(void)
     settings_load();
     s_os_basic = heap_caps_malloc(ELK_OS_BASIC_SIZE, MALLOC_CAP_SPIRAM);
     s_adfs = heap_caps_malloc(ELK_PAGED_ROM_SIZE, MALLOC_CAP_SPIRAM);
+    s_plus1 = heap_caps_malloc(ELK_PLUS1_ROM_SIZE, MALLOC_CAP_SPIRAM);
     s_cfg.ram = heap_caps_malloc(ELK_RAM_SIZE, MALLOC_CAP_SPIRAM);
 }
 
 static void storage(bool sd_card)
 {
-    emu_set_drive_info(sd_card ? "UEF tapes and ADFS disks on the SD card" : "No SD card: no media");
+    emu_set_drive_info(sd_card ? "Tapes, disks and ROM cartridges on the SD card" : "No SD card: no media");
 }
 
 /* ---- Tape and floppy media ---- */
 
-enum { DRIVE_TAPE, DRIVE_0, DRIVE_1, DRIVE_COUNT };
+enum { DRIVE_TAPE, DRIVE_0, DRIVE_1, DRIVE_SK1, DRIVE_SK2, DRIVE_COUNT };
 
 static char s_tape[160];
 
@@ -52,6 +53,9 @@ static bool media_accepts(int drive, const char *path)
     const char *ext = strrchr(path, '.');
     if (!ext) {
         return false;
+    }
+    if (drive >= DRIVE_SK1) {
+        return !strcasecmp(ext, ".rom") || !strcasecmp(ext, ".bin");
     }
     return drive == DRIVE_TAPE ? !strcasecmp(ext, ".uef") :
            !strcasecmp(ext, ".adf") || !strcasecmp(ext, ".ads") ||
@@ -62,6 +66,9 @@ static bool media_insert(int drive, const char *path)
 {
     if (!media_accepts(drive, path)) {
         return false;
+    }
+    if (drive >= DRIVE_SK1) {
+        return elk_cart_insert(drive - DRIVE_SK1, path);
     }
     if (drive != DRIVE_TAPE) {
         return elk_disk_insert(drive - DRIVE_0, path);
@@ -79,6 +86,8 @@ static void media_eject(int drive)
     if (drive == DRIVE_TAPE) {
         elk_tape_eject();
         s_tape[0] = 0;
+    } else if (drive >= DRIVE_SK1) {
+        elk_cart_eject(drive - DRIVE_SK1);
     } else {
         elk_disk_eject(drive - DRIVE_0);
     }
@@ -89,12 +98,15 @@ static const char *media_path(int drive)
     if (drive == DRIVE_TAPE) {
         return s_tape[0] ? s_tape : NULL;
     }
+    if (drive >= DRIVE_SK1) {
+        return elk_cart_path(drive - DRIVE_SK1);
+    }
     return elk_disk_path(drive - DRIVE_0);
 }
 
 static bool media_write_protected(int drive)
 {
-    if (drive == DRIVE_TAPE) {
+    if (drive == DRIVE_TAPE || drive >= DRIVE_SK1) {
         return true;
     }
     elk_disk_status_t disk;
@@ -114,7 +126,7 @@ static const char *new_extension(uint32_t size)
 
 static const char *disk_offer(int drive)
 {
-    if (drive != DRIVE_TAPE && !settings.plus3 && media_path(drive)) {
+    if (takes_blank(drive) && !settings.plus3 && media_path(drive)) {
         return "Enable the Plus 3 and restart to use this ADFS disk.";
     }
     return NULL;
@@ -126,8 +138,8 @@ static void enable_plus3(int drive)
     settings_save();
 }
 
-static const char *const extensions[] = { ".uef", ".adf", ".ads", ".adm", ".adl", NULL };
-static const char *const drive_names[] = { "Tape", "Drive 0", "Drive 1" };
+static const char *const extensions[] = { ".uef", ".adf", ".ads", ".adm", ".adl", ".rom", ".bin", NULL };
+static const char *const drive_names[] = { "Tape", "Drive 0", "Drive 1", "Cartridge SK1", "Cartridge SK2" };
 static const disks_size_t sizes[] = {
     { ELK_ADFS_MEDIUM, "320 KiB ADFS M (.ADF)" },
     { ELK_ADFS_SMALL, "160 KiB ADFS S (.ADF)" },
@@ -137,8 +149,8 @@ static const disks_size_t sizes[] = {
 static const disks_config_t disks = {
     .folder = "electron",
     .extensions = extensions,
-    .description = "UEF tapes and ADFS disks",
-    .title = "Tapes and disks",
+    .description = "UEF tapes, ADFS disks and ROM cartridges",
+    .title = "Tapes, disks and cartridges",
     .button = "Media",
     .nvs_namespace = "elkdisks",
     .drives = DRIVE_COUNT,
@@ -188,6 +200,7 @@ static bool start(void)
         return false;
     }
     s_cfg.os_basic = s_os_basic;
+    s_cfg.plus1 = s_plus1 && rom_store_load(ROM_PLUS1, s_plus1) ? s_plus1 : NULL;
     s_cfg.adfs = NULL;
     if (settings.plus3) {
         if (!rom_store_load(ROM_ADFS, s_adfs)) {
@@ -267,6 +280,13 @@ static void status(emu_json_t *j, int section)
                            disk.protect, disk.motor, disk.reads, disk.writes,
                            disk.size || disk.write_error ? detail : NULL);
         }
+        for (int slot = 0; slot < ELK_CART_SLOTS; slot++) {
+            int drive = DRIVE_SK1 + slot;
+            size_t size = elk_cart_size(slot);
+            snprintf(detail, sizeof(detail), "%zu KiB ROM", size / 1024);
+            emu_json_drive(j, drive_names[drive], disks_name(drive), true, false, 0, 0,
+                           size ? detail : NULL);
+        }
         return;
     }
     static const struct {
@@ -286,7 +306,12 @@ static void status(emu_json_t *j, int section)
     elk_plus3_status(&plus3);
     const char *page = s.rom_page == 8 || s.rom_page == 9 ? "the keyboard" :
                        s.rom_page == 10 || s.rom_page == 11 ? "BASIC" :
-                       s.rom_page == 4 && plus3.enabled ? "ADFS" : NULL;
+                       s.rom_page == 4 && plus3.enabled ? "ADFS" :
+                       s.rom_page == 12 && s_cfg.plus1 ? "Expansion 1.00" : NULL;
+    if (!page && s.rom_page < 4 &&
+        elk_cart_size(1 - (s.rom_page >> 1)) > (size_t)(s.rom_page & 1) * ELK_PAGED_ROM_SIZE) {
+        page = s.rom_page < 2 ? "Cartridge SK2" : "Cartridge SK1";
+    }
     if (page) {
         snprintf(text, sizeof(text), "MOS 1.00, BBC BASIC II; at &amp;8000 now: %s", page);
     } else {
@@ -315,6 +340,9 @@ static void status(emu_json_t *j, int section)
         emu_json_row(j, "Expansions", text);
     } else {
         emu_json_row(j, "Expansions", "Plus 3 off");
+    }
+    if (s_cfg.plus1 || elk_cart_size(0) || elk_cart_size(1)) {
+        emu_json_row(j, "Plus 1", s_cfg.plus1 ? "Expansion 1.00 and two cartridge slots" : "Two cartridge slots");
     }
 }
 

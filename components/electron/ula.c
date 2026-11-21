@@ -37,7 +37,7 @@ void elk_ula_reset(bool power_on)
     elk_tape_control();
     elk.int_status = power_on ? INT_POWER_ON : (elk.int_status & INT_POWER_ON);
     elk.int_enable = 0;
-    elk.adfs_selected = false;
+    elk.external_page = 10;
     elk.rom_page = 10;                  /* BASIC (the MOS selects it anyway) */
     elk.mode = 0;
     elk.screen_base = 0x3000;
@@ -97,14 +97,14 @@ void elk_ula_write(uint16_t a, uint8_t v)
         break;
     case 0x5: {
         uint8_t previous_page = elk.rom_page;
-        bool previous_adfs = elk.adfs_selected;
+        uint8_t previous_external = elk.external_page;
         if ((elk.rom_page & 0x0C) != 0x08 || (v & 0x08)) {
             elk.rom_page = v & 0x0F;
         }
-        if (elk.adfs && a == 0xFE05 && !(v & 0xF0)) {
-            elk.adfs_selected = v == 4;
+        if (a == 0xFE05 && !(v & 0xF0)) {
+            elk.external_page = v;
         }
-        if (previous_page != elk.rom_page || previous_adfs != elk.adfs_selected) {
+        if (previous_page != elk.rom_page || previous_external != elk.external_page) {
             elk_map_rom();
         }
         if (v & 0x10) {

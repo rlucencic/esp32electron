@@ -5,6 +5,8 @@
  *
  * Environment:
  *   ELK_ADFS=<rom>          a Plus 3 with that ADFS ROM
+ *   ELK_PLUS1=<rom>         the Plus 1's 4 KiB Expansion 1.00 ROM
+ *   ELK_SK1, ELK_SK2        cartridge images in the two Plus 1 sockets
  *   ELK_DISK0=<path>        an ADFS disk in drive 0 (writes persist)
  *   ELK_DISK1=<path>        an ADFS disk in drive 1
  *   ELK_NEWDISK=<path>      create a 320 KiB disk and mount it in drive 0
@@ -223,6 +225,16 @@ int main(int argc, char **argv)
     cfg.ram = calloc(1, ELK_RAM_SIZE);
     if (getenv("ELK_ADFS")) {
         cfg.adfs = load(getenv("ELK_ADFS"), ELK_PAGED_ROM_SIZE);
+    }
+    if (getenv("ELK_PLUS1")) {
+        cfg.plus1 = load(getenv("ELK_PLUS1"), ELK_PLUS1_ROM_SIZE);
+    }
+    const char *cartridges[] = { getenv("ELK_SK1"), getenv("ELK_SK2") };
+    for (int slot = 0; slot < ELK_CART_SLOTS; slot++) {
+        if (cartridges[slot] && !elk_cart_insert(slot, cartridges[slot])) {
+            fprintf(stderr, "%s: invalid or unreadable cartridge\n", cartridges[slot]);
+            return 1;
+        }
     }
     if (!elk_init(&cfg)) {
         fprintf(stderr, "elk_init failed\n");
