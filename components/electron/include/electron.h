@@ -31,6 +31,7 @@ typedef struct {
     /* The Plus 3's ADFS ROM (ELK_PAGED_ROM_SIZE bytes); NULL: no Plus 3 */
     const uint8_t *adfs;
     const uint8_t *plus1;       /* optional Expansion 1.00, ELK_PLUS1_ROM_SIZE bytes */
+    const uint8_t *dfs;         /* ACP 1770 DFS in SK1, ELK_PAGED_ROM_SIZE bytes */
 } elk_config_t;
 
 bool elk_init(const elk_config_t *config);
@@ -104,6 +105,8 @@ void elk_tape_status(elk_tape_status_t *status);
 #define ELK_ADFS_SMALL  (160u * 1024)
 #define ELK_ADFS_MEDIUM (320u * 1024)
 #define ELK_ADFS_LARGE  (640u * 1024)
+#define ELK_DFS_40      (100u * 1024)
+#define ELK_DFS_80      (200u * 1024)
 
 typedef struct {
     size_t size;

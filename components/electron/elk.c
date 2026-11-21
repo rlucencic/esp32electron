@@ -15,6 +15,12 @@
 elk_t elk;
 
 static uint8_t s_ff_page[256];          /* nothing there: $FF */
+static uint8_t *s_dfs_ram;
+
+static bool has_fdc(void)
+{
+    return elk.adfs || elk.cfg.dfs;
+}
 
 /* ---- Memory map ---- */
 
@@ -24,7 +30,11 @@ static uint8_t s_ff_page[256];          /* nothing there: $FF */
 void elk_map_rom(void)
 {
     const uint8_t *rom = NULL;
+    bool dfs_ram = false;
     unsigned mask = ELK_PAGED_ROM_SIZE - 1;
+    for (int p = 0x80; p < 0xC0; p++) {
+        elk.cpu.wr[p] = NULL;
+    }
     switch (elk.rom_page) {
     case 8: case 9:
         for (int p = 0x80; p < 0xC0; p++) {
@@ -35,7 +45,10 @@ void elk_map_rom(void)
         rom = elk.basic;
         break;
     default:
-        if (elk.external_page < 4) {
+        if (elk.cfg.dfs && elk.external_page == 2) {
+            rom = elk.cfg.dfs;
+            dfs_ram = true;
+        } else if (elk.external_page < 4 && !(elk.cfg.dfs && elk.external_page == 3)) {
             rom = elk_cart_bank(elk.external_page);
         } else if (elk.external_page == 4) {
             rom = elk.adfs;
@@ -46,7 +59,11 @@ void elk_map_rom(void)
         break;
     }
     for (int p = 0x80; p < 0xC0; p++) {
-        elk.cpu.rd[p] = rom ? (uint8_t *)rom + (((p - 0x80) * 256) & mask) : s_ff_page;
+        if (dfs_ram && p >= 0xB0) {
+            elk.cpu.rd[p] = elk.cpu.wr[p] = s_dfs_ram + (p - 0xB0) * 256;
+        } else {
+            elk.cpu.rd[p] = rom ? (uint8_t *)rom + (((p - 0x80) * 256) & mask) : s_ff_page;
+        }
     }
 }
 
@@ -139,7 +156,7 @@ static uint8_t bus_read(void *ctx, uint16_t a)
         if (elk.cfg.plus1 && a == 0xFC72) {
             return 0x3F;               /* ADC ready, fire buttons released, printer idle */
         }
-        return elk.adfs && (a & 0xFFF0) == 0xFCC0 ? elk_plus3_read(a) : 0xFF;
+        return has_fdc() && (a & 0xFFF0) == 0xFCC0 ? elk_plus3_read(a) : 0xFF;
     }
     return elk.mos[a - 0xC000];
 }
@@ -169,7 +186,7 @@ static void bus_write(void *ctx, uint16_t a, uint8_t v)
     }
     if (a >= 0xFC00 && a < 0xFE00) {
         wait_io(c);
-        if (elk.adfs && (a & 0xFFF0) == 0xFCC0) {
+        if (has_fdc() && (a & 0xFFF0) == 0xFCC0) {
             elk_plus3_write(a, v);
         }
     }
@@ -180,6 +197,15 @@ static void bus_write(void *ctx, uint16_t a, uint8_t v)
 
 bool elk_init(const elk_config_t *config)
 {
+    if (config->adfs && config->dfs) {
+        return false;                 /* the two interfaces use the same registers */
+    }
+    if (config->dfs && !s_dfs_ram) {
+        s_dfs_ram = ELK_SLOW_ALLOC(4096);
+        if (!s_dfs_ram) {
+            return false;
+        }
+    }
     elk.control = 0;
     elk_tape_control();
     memset(&elk, 0, sizeof(elk));
@@ -189,7 +215,7 @@ bool elk_init(const elk_config_t *config)
     elk.mos = config->os_basic + 0x4000;
     elk.adfs = config->adfs;
     memset(s_ff_page, 0xFF, sizeof(s_ff_page));
-    if (!elk_video_init() || (elk.adfs && !elk_plus3_init())) {
+    if (!elk_video_init() || (has_fdc() && !elk_plus3_init())) {
         return false;
     }
     const m6502_bus_t bus = { bus_read, bus_write, NULL, NULL };
@@ -203,6 +229,9 @@ bool elk_init(const elk_config_t *config)
 void elk_reset(void)
 {
     memset(elk.ram, 0, ELK_RAM_SIZE);
+    if (elk.cfg.dfs) {
+        memset(s_dfs_ram, 0, 4096);
+    }
     elk.frame_start = elk.cpu.cycles;
     elk.field_ticks = 312 * ELK_LINE_TICKS;
     elk_ula_reset(true);
@@ -286,7 +315,7 @@ void elk_run_frame(void)
         run_to(start + ELK_LINE_TICKS);
         elk_sound_line();
     }
-    if (elk.adfs) {
+    if (has_fdc()) {
         elk_plus3_update();
     }
     elk.frame_start += elk.field_ticks;

@@ -34,16 +34,16 @@ bash -c '. ~/.espressif/tools/activate_idf_v5.5.6.sh >/dev/null 2>&1; idf.py bui
   never both at once.
 - `flash` writes the ROMs into 64 KB slots of `elk_roms` (0x810000):
   `os_basic.ic2` slot 0 (32 KB: BASIC then the MOS), `adfs.rom` slot 1,
-  and optional `plus1.rom` slot 2. A
+  optional `plus1.rom` slot 2 and optional `acpdfs.rom` slot 3. A
   file of the same name in the SD card's `electron/roms` overrides one
   (`roms/README.md`: where they come from). The boards are shared with the
   other projects: after another one, a full `flash`.
-- NVS: namespace `elk` (`plus3`, `fast_tape`), mounted tapes and disks in `elkdisks`. mDNS
+- NVS: namespace `elk` (`disk_expansion`, `fast_tape`), mounted tapes and disks in `elkdisks`. mDNS
   `acorn-electron.local`.
 - The SD card's `electron/` folder: UEF tapes (`.uef`, gzip-compressed
   ones too, the usual kind: TOSEC's are), listed by the web page and the
   setup screen's Media page. Playback uses the ULA cassette receiver.
-  The same folder holds writable raw ADFS disks for the two Plus 3 drives.
+  The same folder holds writable ADFS and DFS disks for the two floppy drives.
   Plus 1 sockets SK1 and SK2 take read-only `.rom` and `.bin` images.
 - The MaTouch: its UART port, not native USB (the speaker's lines); opening
   that port resets the board.
@@ -79,7 +79,7 @@ blank disks. Mounted media names are remembered across restarts.
 | `components/electron/elk.c` | Set up, reset, BREAK, the frame loop, the 6502's bus and its timing |
 | `components/electron/ula.c` | The ULA's registers, interrupts, ROM paging |
 | `components/electron/tape.c` | UEF parsing, gzip input, bit timing and the ULA's cassette receiver |
-| `components/electron/plus3.c` | WD1770, drive latch, raw ADFS images and disk writeback |
+| `components/electron/plus3.c` | WD1770, drive latch, raw ADFS and DFS images and disk writeback |
 | `components/electron/plus1.c` | Raw ROM cartridge loading and mapping for SK1 and SK2 |
 | `components/electron/video.c` | The picture: line records, modes 0-6, three frames for the presenter |
 | `components/electron/sound.c` | The square wave, two samples a line into the sound ring |
@@ -192,6 +192,19 @@ blank disks. Mounted media names are remembered across restarts.
 
 ## Testing
 
+- **ACP 1770 DFS (2026-11-21).** The original ACP DFS 2.20 ROM runs
+  from SK1, with 4 KiB of workspace and single-density WD1770 transfers.
+  It shares the floppy drive slots with the Acorn Plus 3. Setup and the
+  media browser select the interface. The host catalogued all 117 SSD
+  images in the supplied TOSEC archive and reached the Snapper title
+  via its `!BOOT` file. Chuckie Egg, Repton, Paperboy and Commando also
+  started from their SSDs. `check-dfs` checks save and reload on trimmed
+  SSDs and uses the ROM's `*FORM` command on 40- and 80-track images.
+  The ROM's `*VERIFY` read all 80 tracks and `*BACKUP` produced a
+  byte-for-byte copy on the second drive.
+  Both boards booted Snapper from the trimmed SSD and reloaded a BASIC
+  program after remounting a new disk (40 tracks on MaTouch, 80 on Tab5).
+  Both then switched to Acorn Plus 3 and catalogued the ADFS Welcome disc.
 - **Plus 1 cartridges (2026-11-21).** The host's `check-plus1` target
   verifies both banks, 8 KiB mirroring, and the ULA's priority over external
   ROMs. The original Expansion 1.00 booted VIEW from either socket on the
@@ -238,6 +251,8 @@ blank disks. Mounted media names are remembered across restarts.
   with `ELK_DISK0` and `ELK_DISK1`. `ELK_NEWDISK` creates a formatted
   ADFS M image and mounts it in drive 0. For the Plus 1, use `ELK_PLUS1`
   for Expansion 1.00 and `ELK_SK1` and `ELK_SK2` for the cartridges.
+  Set `ELK_DFS` in place of `ELK_ADFS` for ACP DFS. In DFS mode,
+  `ELK_NEWDISK` creates a formatted 80-track SSD.
 
 ## Working with the user
 

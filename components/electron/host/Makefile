@@ -9,6 +9,7 @@ CFLAGS    := -O2 -g -Wall -Wextra -Wno-unused-parameter -DM6502_HOST_HOOK -DELK_
              -I$(M6502)/include -I$(EMUDBG)/include
 ROM       ?= $(ROOT)/roms/os_basic.ic2
 ADFS      ?= $(ROOT)/roms/adfs.rom
+DFS       ?= $(ROOT)/roms/acpdfs.rom
 FRAMES    ?= 300
 
 ELK_SRCS  := $(wildcard $(ELK)/*.c)
@@ -42,7 +43,10 @@ check-plus3: $(BUILD)/elk_host
 check-plus1: $(BUILD)/elk_host
 	python3 check_plus1.py ./$(BUILD)/elk_host $(ROM)
 
+check-dfs: $(BUILD)/elk_host
+	python3 check_dfs.py ./$(BUILD)/elk_host $(ROM) $(DFS)
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: run check check-plus1 check-plus3 clean
+.PHONY: run check check-plus1 check-plus3 check-dfs clean

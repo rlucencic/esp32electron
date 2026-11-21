@@ -10,7 +10,7 @@ settings_t settings;
 
 void settings_load(void)
 {
-    settings.plus3 = 0;
+    settings.disk_expansion = DISK_NONE;
     settings.fast_tape = 0;
 
     nvs_handle_t h;
@@ -18,8 +18,10 @@ void settings_load(void)
         return;
     }
     uint8_t u8;
-    if (nvs_get_u8(h, "plus3", &u8) == ESP_OK && u8 <= 1) {
-        settings.plus3 = u8;
+    if (nvs_get_u8(h, "disk_expansion", &u8) == ESP_OK && u8 <= DISK_DFS) {
+        settings.disk_expansion = u8;
+    } else if (nvs_get_u8(h, "plus3", &u8) == ESP_OK && u8 == 1) {
+        settings.disk_expansion = DISK_ADFS;
     }
     if (nvs_get_u8(h, "fast_tape", &u8) == ESP_OK && u8 <= 1) {
         settings.fast_tape = u8;
@@ -34,7 +36,7 @@ void settings_save(void)
         ESP_LOGW(TAG, "can't open NVS");
         return;
     }
-    nvs_set_u8(h, "plus3", settings.plus3);
+    nvs_set_u8(h, "disk_expansion", settings.disk_expansion);
     nvs_set_u8(h, "fast_tape", settings.fast_tape);
     nvs_commit(h);
     nvs_close(h);

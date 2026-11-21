@@ -1,6 +1,6 @@
 /*
- * Acorn Plus 3: WD1770 at &FCC4-&FCC7 and drive latch at &FCC0. The controller
- * is polled by ADFS, with no IRQ or NMI. The byte-transfer state machine
+ * Acorn Plus 3 and ACP DFS: WD1770 at &FCC4-&FCC7 and drive latch at &FCC0.
+ * Both poll the controller without IRQ or NMI. The byte-transfer state machine
  * follows the disk controller in esp32ql, with timings for the Electron.
  */
 #include <stdio.h>
@@ -14,6 +14,7 @@
 #define SECTORS_PER_TRACK 16
 #define TRACK_SIZE (SECTOR_SIZE * SECTORS_PER_TRACK)
 #define TRACK_BYTES 6250
+#define DFS_SECTORS_PER_TRACK 10
 #define MAX_TRACK 83
 #define BYTE_TICKS 64                   /* 32 us at 250 kbit/s */
 #define REVOLUTION (ELK_CPU_HZ / 5)     /* 300 rpm */
@@ -28,9 +29,9 @@ enum {
 typedef struct {
     uint8_t *image;
     char path[192];
-    size_t size;
+    size_t size, file_size;
     size_t dirty_begin, dirty_end;
-    int tracks, sides, head;
+    int tracks, sides, head, sectors_per_track;
     bool interleaved, mounted, protect, write_error;
     uint32_t reads, writes;
 } drive_t;
@@ -59,6 +60,11 @@ static int side(void)
     return (fdc.latch >> 2) & 1;
 }
 
+static bool single_density(void)
+{
+    return (fdc.latch & 8) != 0;
+}
+
 static drive_t *unit(void)
 {
     int selected_drive = selected();
@@ -68,12 +74,13 @@ static drive_t *unit(void)
 static uint8_t *sector_at(drive_t *drive, int sector)
 {
     if (!drive || !drive->mounted || drive->head >= drive->tracks ||
-        side() >= drive->sides || sector >= SECTORS_PER_TRACK || (fdc.latch & 8)) {
+        side() >= drive->sides || sector >= drive->sectors_per_track ||
+        single_density() != (drive->sectors_per_track == DFS_SECTORS_PER_TRACK)) {
         return NULL;
     }
     int track = drive->interleaved ? drive->head * drive->sides + side() :
                 side() * drive->tracks + drive->head;
-    return drive->image + track * TRACK_SIZE + sector * SECTOR_SIZE;
+    return drive->image + (track * drive->sectors_per_track + sector) * SECTOR_SIZE;
 }
 
 static uint8_t *current_sector(void)
@@ -113,8 +120,10 @@ static uint16_t crc_byte(uint16_t crc, uint8_t value)
 static uint16_t field_crc(uint8_t marker, const uint8_t *data, size_t length)
 {
     uint16_t crc = 0xFFFF;
-    for (int i = 0; i < 3; i++) {
-        crc = crc_byte(crc, 0xA1);
+    if (!single_density()) {
+        for (int i = 0; i < 3; i++) {
+            crc = crc_byte(crc, 0xA1);
+        }
     }
     crc = crc_byte(crc, marker);
     for (size_t i = 0; i < length; i++) {
@@ -203,8 +212,10 @@ static uint8_t *gap(uint8_t *p, uint8_t value, size_t size)
 
 static uint8_t *field(uint8_t *p, uint8_t marker, const uint8_t *data, size_t length)
 {
-    p = gap(p, 0x00, 12);
-    p = gap(p, 0xA1, 3);
+    p = gap(p, 0x00, single_density() ? 6 : 12);
+    if (!single_density()) {
+        p = gap(p, 0xA1, 3);
+    }
     *p++ = marker;
     memcpy(p, data, length);
     p += length;
@@ -216,6 +227,20 @@ static uint8_t *field(uint8_t *p, uint8_t marker, const uint8_t *data, size_t le
 
 static void read_track(drive_t *drive)
 {
+    if (single_density()) {
+        uint8_t *p = gap(fdc.buffer, 0xFF, 40);
+        p = gap(p, 0, 6);
+        *p++ = 0xFC;
+        for (int sector = 0; sector < drive->sectors_per_track; sector++) {
+            uint8_t id[] = { drive->head, 0, sector, 1 };
+            p = gap(p, 0xFF, 12);
+            p = field(p, 0xFE, id, sizeof(id));
+            p = gap(p, 0xFF, 11);
+            p = field(p, 0xFB, sector_at(drive, sector), SECTOR_SIZE);
+        }
+        gap(p, 0xFF, fdc.buffer + TRACK_BYTES / 2 - p);
+        return;
+    }
     uint8_t *p = gap(fdc.buffer, 0x4E, 80);
     p = gap(p, 0x00, 12);
     p = gap(p, 0xC2, 3);
@@ -240,7 +265,8 @@ static void track_command(uint64_t at)
     }
     switch (fdc.command >> 4) {
     case 0xC: {
-        uint8_t id[] = { drive->head, side(), fdc.id++ % SECTORS_PER_TRACK, 1 };
+        unsigned sector = fdc.id++ % drive->sectors_per_track;
+        uint8_t id[] = { drive->head, side(), sector, 1 };
         uint16_t crc = field_crc(0xFE, id, sizeof(id));
         memcpy(fdc.buffer, id, sizeof(id));
         fdc.buffer[4] = crc >> 8;
@@ -250,13 +276,13 @@ static void track_command(uint64_t at)
     }
     case 0xE:
         read_track(drive);
-        begin_transfer(READ_TRACK, at + SEEK_SECTOR, TRACK_BYTES);
+        begin_transfer(READ_TRACK, at + SEEK_SECTOR, single_density() ? TRACK_BYTES / 2 : TRACK_BYTES);
         break;
     case 0xF:
         if (drive->protect) {
             end_at(at, PROTECT);
         } else {
-            begin_transfer(WRITE_TRACK, at + SEEK_SECTOR, TRACK_BYTES);
+            begin_transfer(WRITE_TRACK, at + SEEK_SECTOR, single_density() ? TRACK_BYTES / 2 : TRACK_BYTES);
         }
         break;
     default:
@@ -265,15 +291,15 @@ static void track_command(uint64_t at)
     }
 }
 
-/* Write Track accepts the WD1770's F5 sync and F7 CRC tokens. Raw ADFS
- * images can store ordinary 256-byte sectors from the track data fields.
+/* Write Track accepts FM marks or MFM marks preceded by the F5 sync token.
+ * Raw images store ordinary 256-byte sectors from the track data fields.
  */
 static bool write_track(drive_t *drive)
 {
     unsigned sectors = 0;
     int sector = -1;
     for (unsigned i = 1; i < fdc.pos; i++) {
-        if (fdc.buffer[i - 1] != 0xF5) {
+        if (fdc.buffer[i - 1] != (single_density() ? 0 : 0xF5)) {
             continue;
         }
         if (fdc.buffer[i] == 0xFE && i + 4 < fdc.pos) {
@@ -329,6 +355,7 @@ static void transfer_done(uint64_t at)
 void elk_plus3_update(void)
 {
     uint64_t now = elk.cpu.cycles;
+    unsigned byte_ticks = single_density() ? 2 * BYTE_TICKS : BYTE_TICKS;
     while ((fdc.status & BUSY) && fdc.ready <= now) {
         uint64_t at = fdc.ready;
         if (fdc.op == WAIT) {
@@ -349,10 +376,10 @@ void elk_plus3_update(void)
                     transfer_done(at);
                     continue;
                 }
-                fdc.ready += (slots - 1) * BYTE_TICKS;
+                fdc.ready += (slots - 1) * byte_ticks;
             }
             fdc.status |= DRQ;
-            fdc.ready += BYTE_TICKS;
+            fdc.ready += byte_ticks;
         } else if (fdc.pos == fdc.length) {
             transfer_done(at);
         } else {
@@ -361,7 +388,7 @@ void elk_plus3_update(void)
             }
             fdc.data = fdc.buffer[fdc.pos++];
             fdc.status |= DRQ;
-            fdc.ready += fdc.pos == fdc.length ? 3 * BYTE_TICKS : BYTE_TICKS;
+            fdc.ready += fdc.pos == fdc.length ? 3 * byte_ticks : byte_ticks;
         }
     }
 }
@@ -493,12 +520,17 @@ static bool flush(drive_t *drive)
     FILE *file = fopen(drive->path, "r+b");
     bool ok = false;
     if (file) {
-        size_t length = drive->dirty_end - drive->dirty_begin;
-        ok = fseek(file, drive->dirty_begin, SEEK_SET) == 0 &&
-             fwrite(drive->image + drive->dirty_begin, 1, length, file) == length;
+        /* Materialize the zero-filled gap when writing past a trimmed SSD. */
+        size_t start = drive->dirty_begin < drive->file_size ? drive->dirty_begin : drive->file_size;
+        size_t length = drive->dirty_end - start;
+        ok = fseek(file, start, SEEK_SET) == 0 &&
+             fwrite(drive->image + start, 1, length, file) == length;
         ok = fclose(file) == 0 && ok;
     }
     if (ok) {
+        if (drive->dirty_end > drive->file_size) {
+            drive->file_size = drive->dirty_end;
+        }
         drive->dirty_end = 0;
     } else if (!drive->write_error) {
         ELK_LOGW("%s: could not flush ADFS disk", drive->path);
@@ -527,18 +559,47 @@ bool elk_disks_flush(void)
     return ok;
 }
 
-static bool geometry(const char *path, size_t size, int *tracks, int *sides, bool *interleaved)
+static bool geometry(const char *path, size_t size, drive_t *drive)
 {
     const char *ext = strrchr(path, '.');
-    *tracks = size == ELK_ADFS_SMALL ? 40 : 80;
-    *sides = size == ELK_ADFS_LARGE ? 2 : 1;
-    *interleaved = ext && strcasecmp(ext, ".adl") == 0;
-    if (!ext || size != (size_t)*tracks * *sides * TRACK_SIZE) {
+    if (!ext) {
         return false;
     }
-    return !strcasecmp(ext, ".adf") || (*interleaved && size == ELK_ADFS_LARGE) ||
+    if (!strcasecmp(ext, ".ssd")) {
+        drive->tracks = size == ELK_DFS_40 ? 40 : 80;
+        drive->sides = 1;
+        drive->sectors_per_track = DFS_SECTORS_PER_TRACK;
+        return size == ELK_DFS_40 || size == ELK_DFS_80;
+    }
+    drive->tracks = size == ELK_ADFS_SMALL ? 40 : 80;
+    drive->sides = size == ELK_ADFS_LARGE ? 2 : 1;
+    drive->interleaved = !strcasecmp(ext, ".adl");
+    drive->sectors_per_track = SECTORS_PER_TRACK;
+    if (size != (size_t)drive->tracks * drive->sides * TRACK_SIZE) {
+        return false;
+    }
+    return !strcasecmp(ext, ".adf") || (drive->interleaved && size == ELK_ADFS_LARGE) ||
            (!strcasecmp(ext, ".ads") && size == ELK_ADFS_SMALL) ||
            (!strcasecmp(ext, ".adm") && size == ELK_ADFS_MEDIUM);
+}
+
+static size_t disk_capacity(FILE *file, const char *path, size_t length)
+{
+    const char *ext = strrchr(path, '.');
+    if (!ext || strcasecmp(ext, ".ssd") || length < 2 * SECTOR_SIZE ||
+        length >= ELK_DFS_80 || length % SECTOR_SIZE) {
+        return length;
+    }
+    /* Archives often omit unused sectors from the end of an SSD. */
+    uint8_t catalogue[2];
+    if (fseek(file, SECTOR_SIZE + 6, SEEK_SET) == 0 &&
+        fread(catalogue, 1, sizeof(catalogue), file) == sizeof(catalogue)) {
+        size_t size = (((catalogue[0] & 3) << 8) | catalogue[1]) * SECTOR_SIZE;
+        if (size == ELK_DFS_40 || size == ELK_DFS_80) {
+            return size;
+        }
+    }
+    return length;
 }
 
 bool elk_disk_insert(int number, const char *path)
@@ -559,13 +620,14 @@ bool elk_disk_insert(int number, const char *path)
     if (!file) {
         return false;
     }
-    long size = fseek(file, 0, SEEK_END) == 0 ? ftell(file) : -1;
+    long length = fseek(file, 0, SEEK_END) == 0 ? ftell(file) : -1;
+    size_t size = length > 0 ? disk_capacity(file, path, length) : 0;
     drive_t next = { .protect = protect, .head = drive->head };
-    bool ok = size > 0 && geometry(path, size, &next.tracks, &next.sides, &next.interleaved) &&
+    bool ok = length > 0 && (size_t)length <= size && geometry(path, size, &next) &&
               fseek(file, 0, SEEK_SET) == 0;
     if (ok) {
         next.image = ELK_SLOW_ALLOC(size);
-        ok = next.image && fread(next.image, 1, size, file) == (size_t)size;
+        ok = next.image && fread(next.image, 1, length, file) == (size_t)length;
     }
     fclose(file);
     if (!ok) {
@@ -576,6 +638,7 @@ bool elk_disk_insert(int number, const char *path)
         finish(elk.cpu.cycles, RNF);
     }
     next.size = size;
+    next.file_size = length;
     next.mounted = true;
     strcpy(next.path, path);
     free(drive->image);
@@ -616,13 +679,13 @@ void elk_disk_status(int number, elk_disk_status_t *out)
     out->write_error = drive->write_error;
     out->reads = drive->reads;
     out->writes = drive->writes;
-    out->motor = elk.adfs && selected() == number && motor(elk.cpu.cycles);
+    out->motor = (elk.adfs || elk.cfg.dfs) && selected() == number && motor(elk.cpu.cycles);
 }
 
 void elk_plus3_status(elk_plus3_status_t *out)
 {
     *out = (elk_plus3_status_t) {
-        .enabled = elk.adfs != NULL, .drive = selected(), .side = side(),
+        .enabled = elk.adfs || elk.cfg.dfs, .drive = selected(), .side = side(),
         .track = fdc.track, .sector = fdc.sector, .command = fdc.command, .status = status(),
     };
 }
@@ -644,16 +707,9 @@ static uint8_t map_checksum(const uint8_t *sector)
     return sum;
 }
 
-bool elk_disk_create(const char *path, uint32_t size)
+static void format_adfs(uint8_t *initial, unsigned sectors, const char *path)
 {
-    int tracks, sides;
-    bool interleaved;
-    if (!geometry(path, size, &tracks, &sides, &interleaved)) {
-        return false;
-    }
     enum { ROOT_SECTOR = 2, FIRST_FREE = 7 };
-    uint8_t initial[FIRST_FREE * SECTOR_SIZE] = { 0 };
-    unsigned sectors = size / SECTOR_SIZE;
     put24(initial, FIRST_FREE);
     put24(initial + 0xFC, sectors);
     put24(initial + 0x100, sectors - FIRST_FREE);
@@ -673,6 +729,22 @@ bool elk_disk_create(const char *path, uint32_t size)
     root[0x4CC] = root[0x4D9] = '$';
     put24(root + 0x4D6, ROOT_SECTOR);
     memcpy(root + 0x4FB, "Hugo", 4);
+}
+
+bool elk_disk_create(const char *path, uint32_t size)
+{
+    drive_t drive = { 0 };
+    if (!geometry(path, size, &drive)) {
+        return false;
+    }
+    uint8_t initial[7 * SECTOR_SIZE] = { 0 };
+    unsigned sectors = size / SECTOR_SIZE;
+    if (drive.sectors_per_track == DFS_SECTORS_PER_TRACK) {
+        initial[0x106] = sectors >> 8;
+        initial[0x107] = sectors;
+    } else {
+        format_adfs(initial, sectors, path);
+    }
 
     FILE *file = fopen(path, "wb");
     if (!file) {

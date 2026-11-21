@@ -17,7 +17,8 @@
 
 <p align="center">
   <b>Early development:</b> the MOS, BBC BASIC, display, sound, keyboard, UEF cassette
-  playback, Acorn Plus 3 ADFS floppy disks and Plus 1 ROM cartridges are implemented.
+  playback, Acorn Plus 3 ADFS and ACP 1770 DFS floppy disks, and Plus 1 ROM
+  cartridges are implemented.
 </p>
 
 <p align="center">
@@ -95,8 +96,11 @@ core this one shares with the Commodores and the Atari.
 
 - Two Plus 1 cartridge sockets for read-only ROM images, with optional
   Acorn Expansion 1.00 firmware.
+- ACP 1770 DFS with writable 40- and 80-track single-sided `.ssd` images.
+  The media browser can create formatted disks, and trimmed archive
+  images expand as the guest writes new sectors.
 
-**Next:** more original software and ACP's 1770 DFS.
+**Next:** more original software testing.
 
 ## Hardware
 
@@ -130,7 +134,8 @@ cloned next to this repository.
    for a BASIC loader or `*RUN` with the program name for machine code.
    Press Escape to stop `*CAT`. Eject and reinsert a tape to rewind it,
    or send `W` on the serial console.
-6. To use disks, set **Plus 3** to **On** in setup or accept the offer
+6. To use ADFS disks, set **Disk expansion** to **Acorn Plus 3 (ADFS)**
+   in setup or accept the offer
    after inserting an ADFS image. The expansion needs `adfs.rom` from
    flash or from the SD card's `electron/roms/` folder. Mount an image in
    **Drive 0** or **Drive 1** through **Media** or the web interface,
@@ -143,6 +148,15 @@ and `.adl` for track-interleaved L images. A 640 KiB `.adf` has all
 of side 0 followed by all of side 1. Use **New** to create an empty
 formatted disk or run `*EFORM` from the original Welcome disc to format
 a mounted image. [Acorn Plus 3 User Guide](https://chrisacorns.computinghistory.org.uk/docs/Acorn/Manuals/Acorn_Plus3UG.pdf)
+
+### ACP 1770 DFS disks
+
+Supply `acpdfs.rom` in `roms/` before flashing or in `electron/roms/`
+on the SD card. Select **ACP 1770 DFS** under **Disk expansion** or mount
+an `.ssd` image and accept the offer to switch. The DFS interface uses
+cartridge socket SK1. In BASIC, enter `*DRIVE 0` or `*DRIVE 1` and
+`*CAT`. Use **New** to make a 100 or 200 KiB DFS disk, or use the ROM's
+`*FORM 40 0` or `*FORM 80 0` with an image of the corresponding size.
 
 ### Plus 1 cartridges
 
@@ -166,6 +180,7 @@ make -C components/electron/host run      # 300 frames: the BASIC prompt in buil
 make -C components/electron/host check    # cassette regression checks (requires zlib)
 make -C components/electron/host check-plus1  # cartridge paging and ROM priority
 make -C components/electron/host check-plus3  # ADFS save, compact, reload and side selection
+make -C components/electron/host check-dfs    # DFS save, reload and format
 ELK_TYPE='40:PRINT 2+2\n' ./components/electron/host/build/elk_host roms/os_basic.ic2 200 out.ppm
 ```
 

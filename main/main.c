@@ -23,7 +23,7 @@
 static const char *TAG = "main";
 
 static elk_config_t s_cfg;
-static uint8_t *s_os_basic, *s_adfs, *s_plus1;
+static uint8_t *s_os_basic, *s_disk_rom, *s_plus1;
 
 /* ---- Memory: everything at power-on, before the screen, WiFi and
  * Bluetooth fragment PSRAM
@@ -32,7 +32,7 @@ static void reserve_memory(void)
 {
     settings_load();
     s_os_basic = heap_caps_malloc(ELK_OS_BASIC_SIZE, MALLOC_CAP_SPIRAM);
-    s_adfs = heap_caps_malloc(ELK_PAGED_ROM_SIZE, MALLOC_CAP_SPIRAM);
+    s_disk_rom = heap_caps_malloc(ELK_PAGED_ROM_SIZE, MALLOC_CAP_SPIRAM);
     s_plus1 = heap_caps_malloc(ELK_PLUS1_ROM_SIZE, MALLOC_CAP_SPIRAM);
     s_cfg.ram = heap_caps_malloc(ELK_RAM_SIZE, MALLOC_CAP_SPIRAM);
 }
@@ -59,7 +59,7 @@ static bool media_accepts(int drive, const char *path)
     }
     return drive == DRIVE_TAPE ? !strcasecmp(ext, ".uef") :
            !strcasecmp(ext, ".adf") || !strcasecmp(ext, ".ads") ||
-           !strcasecmp(ext, ".adm") || !strcasecmp(ext, ".adl");
+           !strcasecmp(ext, ".adm") || !strcasecmp(ext, ".adl") || !strcasecmp(ext, ".ssd");
 }
 
 static bool media_insert(int drive, const char *path)
@@ -121,41 +121,65 @@ static bool takes_blank(int drive)
 
 static const char *new_extension(uint32_t size)
 {
+    if (size == ELK_DFS_40 || size == ELK_DFS_80) {
+        return ".ssd";
+    }
     return size == ELK_ADFS_LARGE ? ".adl" : ".adf";
+}
+
+static uint32_t default_disk_size(int drive)
+{
+    return settings.disk_expansion == DISK_DFS ? ELK_DFS_80 : ELK_ADFS_MEDIUM;
+}
+
+static int expansion_for_disk(int drive)
+{
+    const char *path = takes_blank(drive) ? media_path(drive) : NULL;
+    const char *ext = path ? strrchr(path, '.') : NULL;
+    return ext ? (!strcasecmp(ext, ".ssd") ? DISK_DFS : DISK_ADFS) : DISK_NONE;
 }
 
 static const char *disk_offer(int drive)
 {
-    if (takes_blank(drive) && !settings.plus3 && media_path(drive)) {
-        return "Enable the Plus 3 and restart to use this ADFS disk.";
+    int expansion = expansion_for_disk(drive);
+    if (expansion == DISK_NONE || expansion == settings.disk_expansion) {
+        return NULL;
     }
-    return NULL;
+    return expansion == DISK_DFS ? "Switch to ACP 1770 DFS and restart to use this disk." :
+                                   "Switch to Acorn Plus 3 ADFS and restart to use this disk.";
 }
 
-static void enable_plus3(int drive)
+static void set_disk_expansion(int mode)
 {
-    settings.plus3 = 1;
+    settings.disk_expansion = mode;
     settings_save();
 }
 
-static const char *const extensions[] = { ".uef", ".adf", ".ads", ".adm", ".adl", ".rom", ".bin", NULL };
+static void enable_disk_expansion(int drive)
+{
+    set_disk_expansion(expansion_for_disk(drive));
+}
+
+static const char *const extensions[] = { ".uef", ".adf", ".ads", ".adm", ".adl", ".ssd", ".rom", ".bin", NULL };
 static const char *const drive_names[] = { "Tape", "Drive 0", "Drive 1", "Cartridge SK1", "Cartridge SK2" };
 static const disks_size_t sizes[] = {
     { ELK_ADFS_MEDIUM, "320 KiB ADFS M (.ADF)" },
     { ELK_ADFS_SMALL, "160 KiB ADFS S (.ADF)" },
     { ELK_ADFS_LARGE, "640 KiB ADFS L (.ADL)" },
+    { ELK_DFS_80, "200 KiB DFS (.SSD)" },
+    { ELK_DFS_40, "100 KiB DFS (.SSD)" },
 };
 
 static const disks_config_t disks = {
     .folder = "electron",
     .extensions = extensions,
-    .description = "UEF tapes, ADFS disks and ROM cartridges",
+    .description = "UEF tapes, ADFS and DFS disks, and ROM cartridges",
     .title = "Tapes, disks and cartridges",
     .button = "Media",
     .nvs_namespace = "elkdisks",
     .drives = DRIVE_COUNT,
     .drive_names = drive_names,
-    .new_prefix = "ADFS",
+    .new_prefix = "DISK",
     .new_extension = ".adf",
     .sizes = sizes,
     .size_count = sizeof(sizes) / sizeof(sizes[0]),
@@ -168,8 +192,9 @@ static const disks_config_t disks = {
     .accepts = media_accepts,
     .takes_blank = takes_blank,
     .extension_for = new_extension,
+    .default_size = default_disk_size,
     .offer = disk_offer,
-    .take_offer = enable_plus3,
+    .take_offer = enable_disk_expansion,
 };
 
 static void flush_disks(void *arg)
@@ -188,7 +213,7 @@ static void every_second(void)
 
 static bool start(void)
 {
-    if (s_os_basic == NULL || s_cfg.ram == NULL || (settings.plus3 && s_adfs == NULL)) {
+    if (s_os_basic == NULL || s_cfg.ram == NULL || (settings.disk_expansion != DISK_NONE && s_disk_rom == NULL)) {
         emu_set_message("Not enough memory: see the log.");
         return false;
     }
@@ -202,12 +227,19 @@ static bool start(void)
     s_cfg.os_basic = s_os_basic;
     s_cfg.plus1 = s_plus1 && rom_store_load(ROM_PLUS1, s_plus1) ? s_plus1 : NULL;
     s_cfg.adfs = NULL;
-    if (settings.plus3) {
-        if (!rom_store_load(ROM_ADFS, s_adfs)) {
-            emu_set_message("Plus 3 needs adfs.rom. Add the ROM or switch Plus 3 off.");
+    s_cfg.dfs = NULL;
+    if (settings.disk_expansion == DISK_ADFS) {
+        if (!rom_store_load(ROM_ADFS, s_disk_rom)) {
+            emu_set_message("Acorn Plus 3 needs adfs.rom. Add the ROM or change Disk expansion.");
             return false;
         }
-        s_cfg.adfs = s_adfs;
+        s_cfg.adfs = s_disk_rom;
+    } else if (settings.disk_expansion == DISK_DFS) {
+        if (!rom_store_load(ROM_DFS, s_disk_rom)) {
+            emu_set_message("ACP 1770 DFS needs acpdfs.rom. Add the ROM or change Disk expansion.");
+            return false;
+        }
+        s_cfg.dfs = s_disk_rom;
     }
     if (!elk_init(&s_cfg)) {
         emu_set_message("The Electron could not be set up: see the log.");
@@ -239,21 +271,15 @@ static void set_tape_mode(int mode)
     elk_tape_fast(settings.fast_tape);
 }
 
-static const char *const plus3_modes[] = { "Off", "On", "" };
+static const char *const disk_expansions[] = { "Off", "Acorn Plus 3 (ADFS)", "ACP 1770 DFS", "" };
 
-static int plus3_mode(void)
+static int disk_expansion_mode(void)
 {
-    return settings.plus3;
-}
-
-static void set_plus3(int mode)
-{
-    settings.plus3 = mode != 0;
-    settings_save();
+    return settings.disk_expansion;
 }
 
 static const emu_choice_t choices[] = {
-    { "Plus 3", plus3_modes, plus3_mode, set_plus3, false },
+    { "Disk expansion", disk_expansions, disk_expansion_mode, set_disk_expansion, false },
     { "Tape speed", tape_modes, tape_mode, set_tape_mode, true },
 };
 
@@ -283,6 +309,11 @@ static void status(emu_json_t *j, int section)
         for (int slot = 0; slot < ELK_CART_SLOTS; slot++) {
             int drive = DRIVE_SK1 + slot;
             size_t size = elk_cart_size(slot);
+            if (slot == 0 && s_cfg.dfs) {
+                emu_json_drive(j, drive_names[drive], disks_name(drive), true, false, 0, 0,
+                               "Reserved for ACP 1770 DFS");
+                continue;
+            }
             snprintf(detail, sizeof(detail), "%zu KiB ROM", size / 1024);
             emu_json_drive(j, drive_names[drive], disks_name(drive), true, false, 0, 0,
                            size ? detail : NULL);
@@ -306,9 +337,10 @@ static void status(emu_json_t *j, int section)
     elk_plus3_status(&plus3);
     const char *page = s.rom_page == 8 || s.rom_page == 9 ? "the keyboard" :
                        s.rom_page == 10 || s.rom_page == 11 ? "BASIC" :
-                       s.rom_page == 4 && plus3.enabled ? "ADFS" :
+                       s.rom_page == 4 && s_cfg.adfs ? "ADFS" :
+                       s.rom_page == 2 && s_cfg.dfs ? "ACP 1770 DFS" :
                        s.rom_page == 12 && s_cfg.plus1 ? "Expansion 1.00" : NULL;
-    if (!page && s.rom_page < 4 &&
+    if (!page && s.rom_page < (s_cfg.dfs ? 2 : 4) &&
         elk_cart_size(1 - (s.rom_page >> 1)) > (size_t)(s.rom_page & 1) * ELK_PAGED_ROM_SIZE) {
         page = s.rom_page < 2 ? "Cartridge SK2" : "Cartridge SK1";
     }
@@ -335,11 +367,12 @@ static void status(emu_json_t *j, int section)
              tape.playing ? " (playing)" : "", settings.fast_tape ? "fast leaders" : "real time");
     emu_json_row(j, "Cassette", text);
     if (plus3.enabled) {
-        snprintf(text, sizeof(text), "Acorn Plus 3, ADFS ROM in slot 4, WD1770 command &amp;%02X status &amp;%02X, "
-                 "track %u sector %u side %d", plus3.command, plus3.status, plus3.track, plus3.sector, plus3.side);
+        snprintf(text, sizeof(text), "%s, WD1770 command &amp;%02X status &amp;%02X, "
+                 "track %u sector %u side %d",
+                 s_cfg.dfs ? "ACP 1770 DFS in SK1" : "Acorn Plus 3, ADFS ROM in slot 4", plus3.command, plus3.status, plus3.track, plus3.sector, plus3.side);
         emu_json_row(j, "Expansions", text);
     } else {
-        emu_json_row(j, "Expansions", "Plus 3 off");
+        emu_json_row(j, "Expansions", "Disk expansion off");
     }
     if (s_cfg.plus1 || elk_cart_size(0) || elk_cart_size(1)) {
         emu_json_row(j, "Plus 1", s_cfg.plus1 ? "Expansion 1.00 and two cartridge slots" : "Two cartridge slots");

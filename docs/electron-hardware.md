@@ -822,6 +822,14 @@ analogue inputs present idle and released status.
 
 ## 9. The Plus 3
 
+The optional ACP 1770 DFS interface uses the same controller and latch
+addresses as the Plus 3. The emulator selects one interface at a time.
+ACP DFS maps to the lower SK1 bank (page 2), with writable workspace
+from $B000 to $BFFF. Its SSD format uses ten 256-byte FM sectors per
+track on one side. The catalogue supplies the sector count for images
+with unused trailing sectors omitted.
+[MAME AP3/AP4 device](https://github.com/mamedev/mame/blob/master/src/devices/bus/electron/cart/ap34.cpp)
+
 ### 9.1 What it is
 
 A WD1770 controller, a 3.5" 80-track drive (single- or double-sided

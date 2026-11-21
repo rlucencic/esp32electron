@@ -19,6 +19,7 @@ static const struct {
     [ROM_OS_BASIC] = { "os_basic.ic2", 32 * 1024 },
     [ROM_ADFS] = { "adfs.rom", 16 * 1024 },
     [ROM_PLUS1] = { "plus1.rom", 4 * 1024 },
+    [ROM_DFS] = { "acpdfs.rom", 16 * 1024 },
 };
 
 const char *rom_store_name(rom_id_t id)

@@ -5,6 +5,7 @@
  *
  * Environment:
  *   ELK_ADFS=<rom>          a Plus 3 with that ADFS ROM
+ *   ELK_DFS=<rom>           ACP 1770 DFS, instead of the Plus 3
  *   ELK_PLUS1=<rom>         the Plus 1's 4 KiB Expansion 1.00 ROM
  *   ELK_SK1, ELK_SK2        cartridge images in the two Plus 1 sockets
  *   ELK_DISK0=<path>        an ADFS disk in drive 0 (writes persist)
@@ -226,6 +227,9 @@ int main(int argc, char **argv)
     if (getenv("ELK_ADFS")) {
         cfg.adfs = load(getenv("ELK_ADFS"), ELK_PAGED_ROM_SIZE);
     }
+    if (getenv("ELK_DFS")) {
+        cfg.dfs = load(getenv("ELK_DFS"), ELK_PAGED_ROM_SIZE);
+    }
     if (getenv("ELK_PLUS1")) {
         cfg.plus1 = load(getenv("ELK_PLUS1"), ELK_PLUS1_ROM_SIZE);
     }
@@ -242,14 +246,14 @@ int main(int argc, char **argv)
     }
 
     const char *new_disk = getenv("ELK_NEWDISK");
-    if (new_disk && !elk_disk_create(new_disk, ELK_ADFS_MEDIUM)) {
-        fprintf(stderr, "%s: could not create an ADFS disk\n", new_disk);
+    if (new_disk && !elk_disk_create(new_disk, cfg.dfs ? ELK_DFS_80 : ELK_ADFS_MEDIUM)) {
+        fprintf(stderr, "%s: could not create a floppy disk\n", new_disk);
         return 1;
     }
     const char *images[] = { new_disk ? new_disk : getenv("ELK_DISK0"), getenv("ELK_DISK1") };
     for (int drive = 0; drive < ELK_DISK_DRIVES; drive++) {
         if (images[drive] && !elk_disk_insert(drive, images[drive])) {
-            fprintf(stderr, "%s: invalid or unreadable ADFS disk\n", images[drive]);
+            fprintf(stderr, "%s: invalid or unreadable floppy disk\n", images[drive]);
             return 1;
         }
     }
