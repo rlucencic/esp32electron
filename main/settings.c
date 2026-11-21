@@ -11,6 +11,7 @@ settings_t settings;
 void settings_load(void)
 {
     settings.plus3 = 1;
+    settings.fast_tape = 0;
 
     nvs_handle_t h;
     if (nvs_open(NAMESPACE, NVS_READONLY, &h) != ESP_OK) {
@@ -19,6 +20,9 @@ void settings_load(void)
     uint8_t u8;
     if (nvs_get_u8(h, "plus3", &u8) == ESP_OK && u8 <= 1) {
         settings.plus3 = u8;
+    }
+    if (nvs_get_u8(h, "fast_tape", &u8) == ESP_OK && u8 <= 1) {
+        settings.fast_tape = u8;
     }
     nvs_close(h);
 }
@@ -31,6 +35,7 @@ void settings_save(void)
         return;
     }
     nvs_set_u8(h, "plus3", settings.plus3);
+    nvs_set_u8(h, "fast_tape", settings.fast_tape);
     nvs_commit(h);
     nvs_close(h);
 }

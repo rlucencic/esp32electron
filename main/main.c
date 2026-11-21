@@ -37,29 +37,17 @@ static void reserve_memory(void)
 
 static void storage(bool sd_card)
 {
-    emu_set_drive_info(sd_card ? "Tapes (.UEF) from the SD card: they don't play yet" : "No SD card: no tapes");
+    emu_set_drive_info(sd_card ? "Tapes (.UEF) from the SD card" : "No SD card: no tapes");
 }
 
-/* ---- The tape drive: UEF files in the SD card's electron/ folder, listed,
- * uploaded and downloaded by the web page. Tapes don't play yet (TODO.md 1):
- * the drive only holds the name, and says so
- */
+/* ---- The tape drive ---- */
 
 static char s_tape[160];
 
-/* A UEF file, or one gzip-compressed (the usual kind, same extension) */
 static bool tape_insert(int drive, const char *path)
 {
-    uint8_t head[10];
-    FILE *f = fopen(path, "rb");
-    size_t n = f ? fread(head, 1, sizeof(head), f) : 0;
-    if (f) {
-        fclose(f);
-    }
-    bool uef = n == sizeof(head) && memcmp(head, "UEF File!", sizeof(head)) == 0;
-    bool gzip = n >= 2 && head[0] == 0x1f && head[1] == 0x8b;
-    if (!uef && !gzip) {
-        ESP_LOGW(TAG, "%s: not a UEF file", path);
+    if (strlen(path) >= sizeof(s_tape) || !elk_tape_insert(path)) {
+        ESP_LOGW(TAG, "%s: invalid or unreadable UEF", path);
         return false;
     }
     snprintf(s_tape, sizeof(s_tape), "%s", path);
@@ -68,6 +56,7 @@ static bool tape_insert(int drive, const char *path)
 
 static void tape_eject(int drive)
 {
+    elk_tape_eject();
     s_tape[0] = 0;
 }
 
@@ -78,7 +67,7 @@ static const char *tape_path(int drive)
 
 static bool tape_write_protected(int drive)
 {
-    return false;
+    return true;
 }
 
 static const char *const extensions[] = { ".uef", NULL };
@@ -121,6 +110,7 @@ static bool start(void)
         emu_set_message("The Electron could not be set up: see the log.");
         return false;
     }
+    elk_tape_fast(settings.fast_tape);
     ESP_LOGI(TAG, "Acorn Electron");
     return true;
 }
@@ -132,17 +122,37 @@ static void screen_mode(emu_screen_t *mode)
     mode->hz = ELK_SCREEN_HZ;
 }
 
+static const char *const tape_modes[] = { "Real time", "Fast leaders", "" };
+
+static int tape_mode(void)
+{
+    return settings.fast_tape;
+}
+
+static void set_tape_mode(int mode)
+{
+    settings.fast_tape = mode != 0;
+    settings_save();
+    elk_tape_fast(settings.fast_tape);
+}
+
+static const emu_choice_t choices[] = {
+    { "Tape speed", tape_modes, tape_mode, set_tape_mode, true },
+};
+
 /* ---- Status ---- */
 
 static void status(emu_json_t *j, int section)
 {
+    elk_tape_status_t tape;
+    elk_tape_status(&tape);
     if (section == EMU_STATUS_DRIVES) {
         elk_status_t s;
         elk_get_status(&s);
-        /* the light: the cassette motor's relay ($FE07 bit 6) */
-        emu_json_drive(j, drive_names[0], disks_name(0), false, s.motor, 0, 0,
-                       disks_name(0) ? "Tapes don't play yet (to come): LOAD and CHAIN won't find it" :
-                       "Tapes don't play yet (to come)");
+        char detail[80];
+        snprintf(detail, sizeof(detail), "UEF position %zu of %zu bytes", tape.position, tape.size);
+        emu_json_drive(j, drive_names[0], disks_name(0), true, s.motor, tape.received, 0,
+                       tape.size ? detail : NULL);
         return;
     }
     static const struct {
@@ -179,8 +189,9 @@ static void status(emu_json_t *j, int section)
     snprintf(text, sizeof(text), "CAPS LK %s; by position, Tab and Alt FUNC, F1-F10 f1-f9 and f0, End COPY, "
              "Pause or F12 BREAK", s.caps_lock ? "on" : "off");
     emu_json_row(j, "Keyboard", text);
-    emu_json_row(j, "Cassette", s.motor ? "Motor on; tapes don't play yet (to come)" :
-                 "Motor off; tapes don't play yet (to come)");
+    snprintf(text, sizeof(text), "Motor %s%s, %s", s.motor ? "on" : "off",
+             tape.playing ? " (playing)" : "", settings.fast_tape ? "fast leaders" : "real time");
+    emu_json_row(j, "Cassette", text);
     emu_json_row(j, "Expansions", "None (the Plus 3's floppy disks to come)");
 }
 
@@ -199,6 +210,11 @@ static void console_info(char *buf, size_t len)
  *   T <text>           type text (\n is RETURN)
  *   B                  BREAK
  */
+static void rewind_tape(void *arg)
+{
+    elk_tape_rewind();
+}
+
 static bool console_command(const char *line)
 {
     switch (line[0]) {
@@ -235,6 +251,9 @@ static bool console_command(const char *line)
         elk_type(text);
         return true;
     }
+    case 'W':
+        emu_paused(rewind_tape, NULL);
+        return true;
     case 'B':
         elk_break(true);
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -255,6 +274,8 @@ static const emu_machine_t machine = {
     .reserve_memory = reserve_memory,
     .storage = storage,
     .start = start,
+    .choices = choices,
+    .choice_count = sizeof(choices) / sizeof(choices[0]),
     .reset = elk_reset,
     .run_frame = elk_run_frame,
     .halted = elk_halted,

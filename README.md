@@ -16,8 +16,8 @@
 </p>
 
 <p align="center">
-  <b>Early development:</b> the MOS, BBC BASIC, the display, sound and the keyboard work on both
-  boards; cassette tapes (UEF) and the Plus 3's floppy disks come next.
+  <b>Early development:</b> the MOS, BBC BASIC, display, sound, keyboard and UEF cassette
+  playback are implemented. The Plus 3 floppy expansion comes next.
 </p>
 
 <p align="center">
@@ -83,9 +83,14 @@ core this one shares with the Commodores and the Atari.
 - MOS 1.00 and BBC BASIC II at full speed on both boards (the MaTouch's
   emulation core 44% busy at the prompt, the Tab5's 23%).
 
-**Next**, in order: cassette tapes (UEF images: the TOSEC collection's
-games), the Acorn Plus 3 (ADFS floppy disks), original software and ROM
-cartridges.
+- Cassette playback from raw or gzip-compressed UEF images. The MOS
+  handles `*CAT`, `LOAD`, `CHAIN` and `*RUN` through the emulated ULA.
+  **Fast leaders** shortens silences and carrier tones while keeping data
+  at tape speed. Use **Real time** for software that depends on tape timing.
+  Tape images are read-only.
+
+**Next:** the Acorn Plus 3 (ADFS floppy disks), more original software and
+ROM cartridges.
 
 ## Hardware
 
@@ -114,6 +119,11 @@ cloned next to this repository.
 4. Type BASIC on a Bluetooth or USB keyboard. The keys are where a US
    keyboard has them; `=` is the Electron's ← key and `[` `]` its ↑ ↓, as
    on the Electron's own keyboard.
+5. Copy UEF files to the SD card's `electron/` folder or upload them in
+   the web interface. Mount a file in **Tape**, then enter `CHAIN ""`
+   for a BASIC loader or `*RUN` with the program name for machine code.
+   Press Escape to stop `*CAT`. Eject and reinsert a tape to rewind it,
+   or send `W` on the serial console.
 
 ## Development
 
@@ -122,6 +132,7 @@ The machine (`components/electron`) is platform independent;
 
 ```sh
 make -C components/electron/host run      # 300 frames: the BASIC prompt in build/screen.ppm
+make -C components/electron/host check    # cassette regression checks (requires zlib)
 ELK_TYPE='40:PRINT 2+2\n' ./components/electron/host/build/elk_host roms/os_basic.ic2 200 out.ppm
 ```
 

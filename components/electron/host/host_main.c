@@ -13,6 +13,8 @@
  *   ELK_KEYS=<frame>:<key>:<0|1>[;...]  matrix keys (column * 4 + row)
  *   ELK_BREAK=<frame>       BREAK pressed for two frames
  *   ELK_TYPE=<frame>:<text>[|...]  type text from that frame (\n is RETURN)
+ *   ELK_TAPE=<file.uef>     mount a raw or gzip-compressed UEF image
+ *   ELK_TAPE_FAST=1         shorten carriers and gaps
  *   ELK_WAV=<file>          the sound
  *   ELK_DUMP=<addr>:<len>[;...]  memory in hex at the end
  *   ELK_ZP=<addr>           with the registers, 16 bytes of zero page from there
@@ -223,6 +225,13 @@ int main(int argc, char **argv)
         fprintf(stderr, "elk_init failed\n");
         return 1;
     }
+
+    const char *tape = getenv("ELK_TAPE");
+    if (tape && !elk_tape_insert(tape)) {
+        fprintf(stderr, "%s: invalid or unreadable UEF image\n", tape);
+        return 1;
+    }
+    elk_tape_fast(getenv("ELK_TAPE_FAST") != NULL);
 
     if (getenv("ELK_DASM")) {
         unsigned addr = 0, count = 20;

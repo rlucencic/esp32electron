@@ -73,6 +73,20 @@ void elk_audio_enable(bool on);
 int elk_audio_render(int16_t *dst, int frames);
 int elk_audio_pending(void);
 
+/* ---- Cassette ---- */
+/* Tape operations run with the emulator paused. Status is available while running. */
+typedef struct {
+    size_t size, position;              /* uncompressed UEF bytes */
+    uint32_t received;
+    bool playing;
+} elk_tape_status_t;
+
+bool elk_tape_insert(const char *path);
+void elk_tape_eject(void);
+void elk_tape_rewind(void);
+void elk_tape_fast(bool fast);
+void elk_tape_status(elk_tape_status_t *status);
+
 /* ---- Status ---- */
 typedef struct {
     uint32_t frames;

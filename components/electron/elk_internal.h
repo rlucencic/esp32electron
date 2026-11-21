@@ -126,3 +126,9 @@ void elk_sound_line(void);
 /* keyboard.c */
 uint8_t elk_keyboard_read(uint16_t addr);
 void elk_keyboard_frame(void);
+
+/* tape.c */
+extern uint64_t elk_tape_event;
+void elk_tape_advance(uint64_t now);
+void elk_tape_control(void);
+uint8_t elk_tape_data(void);

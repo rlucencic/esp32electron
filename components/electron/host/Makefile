@@ -18,7 +18,7 @@ run: $(BUILD)/elk_host
 	./$(BUILD)/elk_host $(ROM) $(FRAMES) $(BUILD)/screen.ppm
 
 $(BUILD)/elk_host: host_main.c $(ELK_OBJS)
-	$(CC) $(CFLAGS) $^ -lm -lpthread -o $@
+	$(CC) $(CFLAGS) $^ -lm -lpthread -lz -o $@
 
 $(BUILD)/elk/%.o: $(ELK)/%.c $(wildcard $(ELK)/*.h $(ELK)/include/*.h) $(M6502)/include/m6502.h Makefile
 	@mkdir -p $(dir $@)
@@ -32,7 +32,10 @@ $(BUILD)/%.o: $(EMUDBG)/%.c $(EMUDBG)/include/emudbg.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+check: $(BUILD)/elk_host
+	python3 check_tape.py ./$(BUILD)/elk_host $(ROM)
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: run clean
+.PHONY: run check clean

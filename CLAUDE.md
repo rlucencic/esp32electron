@@ -36,11 +36,11 @@ bash -c '. ~/.espressif/tools/activate_idf_v5.5.6.sh >/dev/null 2>&1; idf.py bui
   file of the same name in the SD card's `electron/roms` overrides one
   (`roms/README.md`: where they come from). The boards are shared with the
   other projects: after another one, a full `flash`.
-- NVS: namespace `elk` (`plus3`), the tape in the drive `elkdisks`. mDNS
+- NVS: namespace `elk` (`plus3`, `fast_tape`), the tape in the drive `elkdisks`. mDNS
   `acorn-electron.local`.
 - The SD card's `electron/` folder: UEF tapes (`.uef`, gzip-compressed
   ones too, the usual kind: TOSEC's are), listed by the web page and the
-  setup screen's Tapes page. Tapes don't play yet (`TODO.md` 1).
+  setup screen's Tapes page. Playback uses the ULA cassette receiver.
 - The MaTouch: its UART port, not native USB (the speaker's lines); opening
   that port resets the board.
 - `../esp32emu/tools/emu_console.py PORT log N | lcd F.png | send "cmd" |
@@ -51,30 +51,30 @@ Console commands (`main/main.c`): `k <n>` tap matrix key n (`electron.h`'s
 `ELK_KEY_*`: column * 4 + row; 6 RETURN, 3 SPACE, 52 ESCAPE), `K <n> 0|1`,
 `T <text>` (`\n` RETURN; a key every 6 frames; the console takes lines of
 about 128 characters: longer ones are cut, so type programs a line at a
-time), `B` BREAK.
+time), `B` BREAK, `W` rewind tape.
 
 The web page (esp32emu's, `http://acorn-electron.local`): the machine card
 (`status()`: the system, the ROM at $8000 now, the mode (size, colours,
 screen memory, start, whether the CPU waits), the tone's pitch, CAPS LK and
 the keys' places, the cassette motor, the expansions), the drives card (the
-Tape drive: its tape, the motor as its light, "Tapes don't play yet"), the
+Tape drive: its tape, playback position, received bytes and motor light), the
 board card, and the `.uef` files in `electron/` with upload (ZIP files
 unpacked in the browser), download, delete and Insert into Tape. The Tape
 drive (`main.c`'s `disks`, the setup screen's Tapes button too) takes a
-UEF or gzip file (else 422) and only holds its name, remembered across
-restarts: LOAD and CHAIN don't see it yet.
+UEF or gzip file (else 422). Its name is remembered across restarts.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `main/main.c` | The Electron as an `emu_machine_t`: memory, start, the Tape drive (`disks`: the name only so far), status, console |
+| `main/main.c` | The Electron as an `emu_machine_t`: memory, start, the Tape drive (`disks`), status, console |
 | `main/keymap.c` | The board's keyboards (HID usages) to the Electron's keys, by position |
 | `main/rom_store.c` | The ROMs from their partition slots, or the SD card's `electron/roms` |
 | `main/settings.c` | NVS `elk` |
 | `components/electron/` | The machine, platform independent (`include/electron.h`) |
 | `components/electron/elk.c` | Set up, reset, BREAK, the frame loop, the 6502's bus and its timing |
 | `components/electron/ula.c` | The ULA's registers, interrupts, ROM paging |
+| `components/electron/tape.c` | UEF parsing, gzip input, bit timing and the ULA's cassette receiver |
 | `components/electron/video.c` | The picture: line records, modes 0-6, three frames for the presenter |
 | `components/electron/sound.c` | The square wave, two samples a line into the sound ring |
 | `components/electron/keyboard.c` | The keyboard matrix as the CPU reads it |
@@ -186,12 +186,26 @@ restarts: LOAD and CHAIN don't see it yet.
 
 ## Testing
 
+- **UEF cassette playback (2026-11-21).** The receiver uses $FE04, the
+  motor and input mode in $FE07, and the RxFull and high-tone interrupts.
+  The player runs at nominal 1200 baud with a bit clock in the Electron's
+  2 MHz timebase. The Fast leaders setting limits long carriers and gaps
+  while preserving the data rate. On the host, Chuckie Egg reached its
+  title after about 127 seconds in Real time and 115 with Fast leaders.
+  Snapper and Repton reached their menus. All 876 UEF files extracted from
+  the TOSEC archive supplied in Drive mounted on the host. Generated
+  tapes cover `LOAD`, `CHAIN`, `*RUN`, explicit bits and gzip validation
+  in `make -C components/electron/host check`. The MaTouch and Tab5
+  catalogued and ran a BASIC program from a gzip UEF uploaded through
+  the web interface. The MaTouch also played the original TOSEC Snapper
+  image to its menu in Real time.
 - Host: `make -C components/electron/host run` (300 frames of
   `roms/os_basic.ic2`): the BASIC prompt in `build/screen.ppm`. Switches in
   `host_main.c`: `ELK_LOG`, `ELK_SHOTS`, `ELK_STOP`, `ELK_TRACE`,
   `ELK_WATCH` (a CPU write to an address: the instructions before),
   `ELK_ZP` (zero page with the registers), `ELK_DASM`, `ELK_DUMP`,
-  `ELK_KEYS`, `ELK_TYPE`, `ELK_WAV`, `ELK_ADFS`.
+  `ELK_KEYS`, `ELK_TYPE`, `ELK_WAV`, `ELK_ADFS`, `ELK_TAPE`, and
+  `ELK_TAPE_FAST`.
 
 ## Working with the user
 

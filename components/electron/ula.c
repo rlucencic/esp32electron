@@ -33,10 +33,11 @@ void elk_ula_update_irq(void)
 
 void elk_ula_reset(bool power_on)
 {
+    elk.control = 0;
+    elk_tape_control();
     elk.int_status = power_on ? INT_POWER_ON : (elk.int_status & INT_POWER_ON);
     elk.int_enable = 0;
     elk.rom_page = 10;                  /* BASIC (the MOS selects it anyway) */
-    elk.control = 0;
     elk.mode = 0;
     elk.screen_base = 0x3000;
     elk.counter = 0;
@@ -59,7 +60,7 @@ uint8_t elk_ula_read(uint16_t a)
     case 0x4:
         elk.int_status &= ~INT_RX_FULL;
         elk_ula_update_irq();
-        return 0;
+        return elk_tape_data();
     default:
         return 0;
     }
@@ -111,9 +112,11 @@ void elk_ula_write(uint16_t a, uint8_t v)
         break;
     case 0x6:
         elk.counter = v;
+        elk_tape_control();
         break;
     case 0x7: {
         elk.control = v;
+        elk_tape_control();
         int mode = (v >> 3) & 7;
         mode = mode == 7 ? 4 : mode;            /* 7 is the ULA's mode 4 */
         if (mode != elk.mode) {

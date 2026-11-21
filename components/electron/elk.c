@@ -168,6 +168,8 @@ static void bus_write(void *ctx, uint16_t a, uint8_t v)
 
 bool elk_init(const elk_config_t *config)
 {
+    elk.control = 0;
+    elk_tape_control();
     memset(&elk, 0, sizeof(elk));
     elk.cfg = *config;
     elk.ram = config->ram;
@@ -225,9 +227,19 @@ static void run_to(uint64_t t)
             map_memory();
             m6502_reset(&elk.cpu);
         }
-        if (elk.cpu.cycles < t) {
-            elk.cpu.until = t;
+        while (elk.cpu.cycles < t) {
+            if (elk_tape_event <= elk.cpu.cycles) {
+                elk_tape_advance(elk.cpu.cycles);
+            }
+            elk.cpu.until = elk_tape_event < t ? elk_tape_event : t;
+            uint64_t before = elk.cpu.cycles;
             m6502_run(&elk.cpu);
+            if (elk.cpu.cycles == before) {
+                break;
+            }
+        }
+        if (elk_tape_event <= elk.cpu.cycles) {
+            elk_tape_advance(elk.cpu.cycles);
         }
     }
     was_down = elk.break_down;
