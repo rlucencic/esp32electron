@@ -193,6 +193,16 @@ blank disks. Mounted media names are remembered across restarts.
 
 ## Testing
 
+- **Tree of Knowledge cassette round trip (2026-11-22).** The original
+  split Plus 1 cartridge built an `Animals` tree with an owl and an otter
+  distinguished by whether they can fly. **Save the tree** wrote
+  `ANIMALS` to a blank `.rec.uef` as one 49-byte block with valid header
+  and data CRCs. A fresh host session loaded it from the startup menu.
+  **Think of an animal** asked the saved question and guessed owl for
+  yes and otter for no. The MaTouch recorded its own copy to SD, then
+  reopened the tree after a cold reset and tape remount. Its 49-byte
+  payload matched the host recording, and replaying the MaTouch tape
+  on the host reproduced both guesses.
 - **Split Plus 1 cartridges (2026-11-22).** The TOSEC `[lorom]` and
   `[uprom]` dumps mount together in one socket when either half is
   selected. `check-plus1` compares both mount choices against a single
