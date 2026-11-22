@@ -184,6 +184,9 @@ Mount a raw `.rom` or `.bin` image in **Cartridge SK1** or **Cartridge SK2**
 in **Media** or the web interface. Reset the Electron after inserting or
 removing a cartridge so the MOS rescans its ROMs. Images can be 8, 16 or
 32 KiB. A 32 KiB image holds the lower bank followed by the upper bank.
+For a TOSEC cartridge split into `[lorom]` and `[uprom]` files, upload
+both halves with their original filenames and mount either one in the
+desired socket. The emulator loads both 16 KiB banks into that socket.
 
 Add the optional `plus1.rom` to `roms/` before flashing, or put it in
 `electron/roms/` on the SD card and restart the emulator. Acorn's

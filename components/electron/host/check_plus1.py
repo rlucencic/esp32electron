@@ -51,14 +51,26 @@ def main(executable, mos):
             lines.append(f"{line * 10} DATA {values}")
         lines.append("RUN")
         schedule = "|".join(f"{100 + 380 * index}:{line}\\n" for index, line in enumerate(lines))
-        env = {**os.environ, "ELK_PLUS1": str(firmware), "ELK_SK1": str(sk1), "ELK_SK2": str(sk2),
+        env = {**os.environ, "ELK_PLUS1": str(firmware), "ELK_SK2": str(sk2),
                "ELK_TYPE": schedule, "ELK_DUMP": "0D00:8"}
-        result = subprocess.run(
-            [executable, mos, str(100 + 380 * len(lines)), os.devnull],
-            env=env, check=True, capture_output=True, text=True,
-        )
+        low = folder / "Test [lorom][ID].rom"
+        high = folder / "Test [uprom][ID].rom"
+        low.write_bytes(bytes([0x31]) * 16384)
+        for invalid in (None, bytes(16383), bytes(16385)):
+            if invalid is not None:
+                high.write_bytes(invalid)
+            result = subprocess.run([executable, mos, "0", os.devnull],
+                                    env={**env, "ELK_SK1": str(low)}, capture_output=True)
+            assert result.returncode == 1 and b"invalid or unreadable cartridge" in result.stderr
+        high.write_bytes(bytes([0x42]) * 16384)
+
         expected = bytes([Path(mos).read_bytes()[0], 0x64, 0x31, 0x31, 0x31, 0x42, 0x53, 0xFF])
-        assert expected.hex(" ").upper() in result.stdout.splitlines(), result.stdout
+        for cartridge in (sk1, low, high):
+            result = subprocess.run(
+                [executable, mos, str(100 + 380 * len(lines)), os.devnull],
+                env={**env, "ELK_SK1": str(cartridge)}, check=True, capture_output=True, text=True,
+            )
+            assert expected.hex(" ").upper() in result.stdout.splitlines(), result.stdout
     print("Electron Plus 1 paging checks passed")
 
 

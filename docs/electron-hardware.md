@@ -802,6 +802,10 @@ The cartridge sockets and the optional Expansion 1.00 ROM are implemented.
 The emulator maps a raw 8 KiB image twice in the lower bank, a 16 KiB
 image in the lower bank, and a 32 KiB image in both banks. Printer and
 analogue inputs present idle and released status.
+Split TOSEC cartridge dumps use `[lorom]` for the first bank and
+`[uprom]` for the second. Both 16 KiB files must be in the same folder.
+[MAME Electron cartridge list](https://github.com/mamedev/mame/blob/master/hash/electron_cart.xml),
+[MAME cartridge bank mapping](https://github.com/mamedev/mame/blob/master/src/devices/bus/electron/cart/slot.cpp)
 
 - Adds two cartridge slots, a Centronics printer port and a 4-channel
   ADC (two joysticks, two fire buttons) [P1UG ch.1] [one source].

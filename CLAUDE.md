@@ -193,6 +193,16 @@ blank disks. Mounted media names are remembered across restarts.
 
 ## Testing
 
+- **Split Plus 1 cartridges (2026-11-22).** The TOSEC `[lorom]` and
+  `[uprom]` dumps mount together in one socket when either half is
+  selected. `check-plus1` compares both mount choices against a single
+  32 KiB image and rejects missing, short and oversized companion files.
+  The host started Countdown to Doom, opened Starship Command's combat
+  setup and started a new tree in Tree of Knowledge from the original
+  split cartridges. The MaTouch mounted Countdown to Doom via the lower
+  dump in SK1 and ran `LOOK`. The Tab5 mounted Starship Command via the
+  upper dump in SK2 and reached its title. Both boards rejected a lone
+  half and returned both uploaded ROM files byte for byte.
 - **Original tape and disk software (2026-11-22).** Another 24 TOSEC
   tapes reached their menus, opening screens or gameplay on the host.
   Both Real time and Fast leaders completed the later loading stages
