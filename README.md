@@ -135,15 +135,17 @@ cloned next to this repository.
    for a BASIC loader or `*RUN` with the program name for machine code.
    Press Escape to stop `*CAT`. Eject and reinsert a tape to rewind it,
    or send `W` on the serial console.
+   Multi-stage tapes can take several minutes even with **Fast leaders**.
+   The **Tape** read counter in the web interface shows whether a tape
+   is still loading while the screen stays on a title or loading page.
    To record, use **New** on the **Tape** row in setup, or choose
    **Blank recording tape** in the web media browser and mount the new
    file. Enter `*TAPE` if a disk filing system is active, then use
    `SAVE "NAME"` and press Return at **RECORD then RETURN**. Recordings
    append to the tape. The emulator writes them to SD after recording
    stops. Remount the tape before using `LOAD` or `CHAIN` from the start.
-6. To use ADFS disks, set **Disk expansion** to **Acorn Plus 3 (ADFS)**
-   in setup or accept the offer
-   after inserting an ADFS image. The expansion needs `adfs.rom` from
+6. To use ADFS disks, set **Disk system** to **Plus 3** in setup or accept
+   the offer after inserting an ADFS image. The expansion needs `adfs.rom` from
    flash or from the SD card's `electron/roms/` folder. Mount an image in
    **Drive 0** or **Drive 1** through **Media** or the web interface,
    then enter `*MOUNT 0` or `*MOUNT 1` and `*CAT`. Use `*TAPE` to
@@ -165,7 +167,7 @@ After a rejected save in Acorn ADFS, use `*MOUNT` to reload the disk map.
 ### ACP 1770 DFS disks
 
 Supply `acpdfs.rom` in `roms/` before flashing or in `electron/roms/`
-on the SD card. Select **ACP 1770 DFS** under **Disk expansion** or mount
+on the SD card. Select **ACP DFS** under **Disk system** or mount
 an `.ssd` or `.dsd` image and accept the offer to switch. The DFS interface
 uses cartridge socket SK1. In BASIC, enter `*DRIVE 0` or `*DRIVE 1` and
 `*CAT`. Use `*DRIVE 2` for the second side in physical Drive 0, and

@@ -264,13 +264,13 @@ static bool start(void)
     s_cfg.dfs = NULL;
     if (settings.disk_expansion == DISK_ADFS) {
         if (!rom_store_load(ROM_ADFS, s_disk_rom)) {
-            emu_set_message("Acorn Plus 3 needs adfs.rom. Add the ROM or change Disk expansion.");
+            emu_set_message("Acorn Plus 3 needs adfs.rom. Add the ROM or change Disk system.");
             return false;
         }
         s_cfg.adfs = s_disk_rom;
     } else if (settings.disk_expansion == DISK_DFS) {
         if (!rom_store_load(ROM_DFS, s_disk_rom)) {
-            emu_set_message("ACP 1770 DFS needs acpdfs.rom. Add the ROM or change Disk expansion.");
+            emu_set_message("ACP 1770 DFS needs acpdfs.rom. Add the ROM or change Disk system.");
             return false;
         }
         s_cfg.dfs = s_disk_rom;
@@ -305,7 +305,7 @@ static void set_tape_mode(int mode)
     elk_tape_fast(settings.fast_tape);
 }
 
-static const char *const disk_expansions[] = { "Off", "Acorn Plus 3 (ADFS)", "ACP 1770 DFS", "" };
+static const char *const disk_expansions[] = { "Off", "Plus 3", "ACP DFS", "" };
 
 static int disk_expansion_mode(void)
 {
@@ -313,7 +313,7 @@ static int disk_expansion_mode(void)
 }
 
 static const emu_choice_t choices[] = {
-    { "Disk expansion", disk_expansions, disk_expansion_mode, set_disk_expansion, false },
+    { "Disk system", disk_expansions, disk_expansion_mode, set_disk_expansion, false },
     { "Tape speed", tape_modes, tape_mode, set_tape_mode, true },
 };
 

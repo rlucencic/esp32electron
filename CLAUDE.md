@@ -193,6 +193,24 @@ blank disks. Mounted media names are remembered across restarts.
 
 ## Testing
 
+- **Original tape and disk software (2026-11-22).** Another 24 TOSEC
+  tapes reached their menus, opening screens or gameplay on the host.
+  Both Real time and Fast leaders completed the later loading stages
+  of Galaforce 2, Hostages, Imogen, Perplexity, Predator and Sim City.
+  Fast leaders saved 31 to 52 seconds across those six tapes. Sim City
+  still took about six minutes and received the same 42,078 bytes in
+  both modes.
+  Thrust reached its first level, Podd acted out `jump`, Castle of
+  Riddles accepted `LOOK` and `NORTH`, and Acornsoft Chess answered
+  `E2E4` with `Ng8-f6`. Sim City generated a city map, Acornsoft
+  Forth evaluated `7 6 * .`, and Turtle Graphics drew a right angle.
+  Repton Infinity booted from its program SSD. In Play Game, `L` opened
+  the filename prompt. Swapping to the data SSD in the same drive and
+  entering `Rep4A` loaded level 1.
+  The MaTouch also completed the Repton Infinity disk swap and entered
+  the first level of Thrust from its original SSD.
+  The Tab5 read all 21,169 bytes of the original Podd tape and acted
+  out `jump`.
 - **Double-sided DFS (2026-11-21).** ACP DFS uses drives 0 and 2 for
   the two surfaces of the first disk and 1 and 3 for the second disk.
   The host played Snapper and Repton from opposite sides of one DSD
