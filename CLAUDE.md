@@ -193,6 +193,16 @@ blank disks. Mounted media names are remembered across restarts.
 
 ## Testing
 
+- **Countdown to Doom cassette round trip (2026-11-22).** The original
+  split cartridge started a new game with `I`. `TAKE EXPLOSIVE` and
+  `NORTH` changed the inventory and moved into the cargo hold. `SAVE`
+  followed by Return at the recording prompt wrote `INIT` to a blank
+  `.rec.uef`. Its nine blocks contained 2,296 payload bytes with valid
+  header and data CRCs. A fresh host session selected `S` at startup,
+  resumed in the cargo hold, and listed the explosive with `INV`.
+  The Tab5 recorded and restored the same location and inventory after
+  a cold reset and tape remount. Its SD recording passed the CRC checks
+  and also restored the game on the host.
 - **Tree of Knowledge cassette round trip (2026-11-22).** The original
   split Plus 1 cartridge built an `Animals` tree with an owl and an otter
   distinguished by whether they can fly. **Save the tree** wrote
