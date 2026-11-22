@@ -193,6 +193,27 @@ blank disks. Mounted media names are remembered across restarts.
 
 ## Testing
 
+- **Original software pass complete (2026-11-22).** The final host run
+  mounted all 869 cassette UEFs and seven floppy UEFs from the supplied
+  TOSEC archive. The original ACP DFS ROM catalogued all 117 SSDs.
+  Selected titles also ran on the host and the two boards, including
+  games with several loading stages, separate disks or split cartridge
+  banks, and applications that saved and reopened their own files.
+  All five host regression targets passed. The checks below describe
+  the titles and workflows exercised.
+- **Mini Office cassette round trips (2026-11-22).** The Word Processor
+  tape loaded via `CHAIN ""`. From its options screen, f1 opened normal
+  editing mode. f6 saved a two-line document named `LETTER` to a separate
+  `.rec.uef` cassette. The 51-byte block passed the header and data CRC
+  checks. A fresh host session loaded the original program again, then
+  reopened `LETTER` using f7 and displayed both lines in the editor.
+  The Tab5 recorded `LETTER` to SD, cleared the editor with f8, remounted
+  the recording tape and reopened both lines. The host also reopened
+  the Tab5 recording. Both tapes matched their original bytes after
+  playback.
+  Mini Office Database saved one record with a string and a numeric
+  field to `RECORDS`. A fresh host session reopened its 86-byte save
+  and listed `NAME: OTTER` and `VALUE: 42`.
 - **Countdown to Doom cassette round trip (2026-11-22).** The original
   split cartridge started a new game with `I`. `TAKE EXPLOSIVE` and
   `NORTH` changed the inventory and moved into the cargo hold. `SAVE`

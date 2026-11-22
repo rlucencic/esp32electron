@@ -3,5 +3,5 @@
 In order. A finished item goes into CLAUDE.md (what it is, how it was
 checked) and leaves this list.
 
-1. **Original software**. Broader play testing of the TOSEC games and
-   applications.
+There are no open items on this list. See `CLAUDE.md` under Testing for
+the original software coverage and results.

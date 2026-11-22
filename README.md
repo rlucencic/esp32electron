@@ -16,9 +16,9 @@
 </p>
 
 <p align="center">
-  <b>Early development:</b> the MOS, BBC BASIC, display, sound, keyboard, UEF cassette
+  <b>Tested on both boards:</b> BBC BASIC, display, sound, keyboard, UEF cassette
   playback and recording, Acorn Plus 3 ADFS and ACP 1770 DFS floppy disks, and Plus 1 ROM
-  cartridges are implemented.
+  cartridges.
 </p>
 
 <p align="center">
@@ -79,7 +79,7 @@ core this one shares with the Commodores and the Atari.
   palette, the MOS's flashing colours.
 - Sound: the ULA's square wave, at the MOS's pitches.
 - The keyboard: Bluetooth and USB keyboards (the Tab5 Keyboard too) by
-  position; FUNC on Tab and Alt, the function keys f0-f9 on F1-F10, CAPS LK
+  position; FUNC on Tab and Alt, f1-f9 on F1-F9 and f0 on F10, CAPS LK
   on Caps Lock, COPY on End, BREAK on Pause or F12.
 - MOS 1.00 and BBC BASIC II at full speed on both boards (the MaTouch's
   emulation core 44% busy at the prompt, the Tab5's 23%).
@@ -101,7 +101,10 @@ core this one shares with the Commodores and the Atari.
   The media browser can create formatted disks. Trimmed archive images
   expand as the guest writes new sectors.
 
-**Next:** more original software testing.
+The original software test pass covered cassette, floppy and cartridge
+titles, including games and applications that save and reopen data.
+See [the test notes](CLAUDE.md#testing) for the archive coverage and
+individual workflows.
 
 ## Hardware
 
