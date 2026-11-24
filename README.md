@@ -215,6 +215,10 @@ ELK_TYPE='40:PRINT 2+2\n' ./components/electron/host/build/elk_host roms/os_basi
 writes, keys, memory dumps, disassembly). `docs/electron-hardware.md` holds
 the hardware research everything here is written from, with its sources.
 
+## Roadmap
+
+See [TODO.md](TODO.md) for proposed work and how to verify it.
+
 ## Credits
 
 - The 6502 core is esp32emu's own.
